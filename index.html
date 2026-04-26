@@ -14,7 +14,7 @@
     --text-main:#111827; --text-muted:#64748b; --border:#e5e7eb; --border-soft:#eef2f7;
     --btn-hover:#f1f5f9; --input-bg:#ffffff; --page-bg:#ffffff; --shadow:0 18px 45px rgba(15,23,42,.08);
     --sidebar-bg:#fbfdff; --sidebar-hover:#eef6ff; --accent:#2563eb; --accent-soft:#e8f0ff; --danger:#dc2626; --danger-soft:#fff1f2;
-    --selection:rgba(37,99,235,.18); --page-filter:none; --page-blend:normal; --focus:0 0 0 3px rgba(37,99,235,.16);
+    --selection:rgba(37,99,235,.38); --page-filter:none; --page-blend:normal; --focus:0 0 0 3px rgba(37,99,235,.16);
   }
   body.theme-dark {
     color-scheme: dark;
@@ -22,28 +22,28 @@
     --text-main:#e5e7eb; --text-muted:#94a3b8; --border:#263241; --border-soft:#1f2937;
     --btn-hover:#202a36; --input-bg:#0d1117; --page-bg:#1c212b; --shadow:0 20px 50px rgba(0,0,0,.38);
     --sidebar-bg:#131922; --sidebar-hover:#1f2937; --accent:#60a5fa; --accent-soft:#14243b; --danger:#f87171; --danger-soft:#351a1f;
-    --selection:rgba(96,165,250,.24); --page-filter:invert(.86) hue-rotate(180deg) contrast(1.06); --page-blend:normal; --focus:0 0 0 3px rgba(96,165,250,.20);
+    --selection:rgba(96,165,250,.48); --page-filter:invert(.86) hue-rotate(180deg) contrast(1.06); --page-blend:normal; --focus:0 0 0 3px rgba(96,165,250,.20);
   }
   body.theme-green {
     --bg-main:#eef7ef; --bg-toolbar:rgba(248,253,249,.92); --bg-header:#f9fffa; --surface:#fbfffc; --surface-2:#f0f8f1;
     --text-main:#1f3d27; --text-muted:#5f7f67; --border:#d6e8d9; --border-soft:#e6f2e8;
     --btn-hover:#e6f3e8; --input-bg:#ffffff; --page-bg:#edf8ee; --shadow:0 18px 45px rgba(31,61,39,.10);
     --sidebar-bg:#f4fbf5; --sidebar-hover:#e4f2e6; --accent:#2f7d4f; --accent-soft:#e7f4ec; --danger:#c2410c; --danger-soft:#fff4ed;
-    --selection:rgba(47,125,79,.18); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(47,125,79,.18);
+    --selection:rgba(37,99,235,.36); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(47,125,79,.18);
   }
   body.theme-sepia {
     --bg-main:#f7f0e2; --bg-toolbar:rgba(255,250,240,.92); --bg-header:#fff8ec; --surface:#fffaf0; --surface-2:#fbf1df;
     --text-main:#473829; --text-muted:#8a735a; --border:#eadcc4; --border-soft:#f2e8d7;
     --btn-hover:#f4e8d2; --input-bg:#fffaf0; --page-bg:#fff6e6; --shadow:0 18px 45px rgba(71,56,41,.10);
     --sidebar-bg:#fff8ec; --sidebar-hover:#f3e4ca; --accent:#9a6a2f; --accent-soft:#f3e7d5; --danger:#b45309; --danger-soft:#fff7ed;
-    --selection:rgba(154,106,47,.20); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(154,106,47,.18);
+    --selection:rgba(37,99,235,.34); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(154,106,47,.18);
   }
   body.theme-gray {
     --bg-main:#f1f3f5; --bg-toolbar:rgba(255,255,255,.90); --bg-header:#ffffff; --surface:#ffffff; --surface-2:#f6f7f8;
     --text-main:#22272e; --text-muted:#6b7280; --border:#d7dce2; --border-soft:#e7eaee;
     --btn-hover:#eef0f2; --input-bg:#ffffff; --page-bg:#f7f7f7; --shadow:0 18px 45px rgba(0,0,0,.08);
     --sidebar-bg:#fafafa; --sidebar-hover:#eceff2; --accent:#475569; --accent-soft:#edf0f4; --danger:#dc2626; --danger-soft:#fff1f2;
-    --selection:rgba(71,85,105,.20); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(71,85,105,.16);
+    --selection:rgba(37,99,235,.34); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(71,85,105,.16);
   }
 
   * { box-sizing:border-box; }
@@ -173,7 +173,8 @@
   }
   body.theme-dark .page-wrapper { box-shadow:0 16px 32px rgba(0,0,0,.32); border-color:rgba(148,163,184,.12); }
   .page-placeholder { user-select:none; color:var(--text-muted); opacity:.72; }
-  .page-wrapper canvas { display:block; filter:var(--page-filter); mix-blend-mode:var(--page-blend); }
+  .page-content { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; mix-blend-mode:var(--page-blend); }
+  .page-wrapper canvas { display:block; filter:var(--page-filter); mix-blend-mode:normal; image-rendering:auto; backface-visibility:hidden; }
   .textLayer { position:absolute; inset:0; overflow:hidden; transform-origin:0 0; }
   .textLayer ::selection { background:var(--selection)!important; color:transparent!important; }
   .pdf-link { position:absolute; z-index:20; border-radius:4px; transition:background .12s, box-shadow .12s; }
@@ -355,6 +356,12 @@
   const PREFETCH_PAGES = 1;
   const KEEP_DISTANCE = 3;
   const MAX_RENDERED_PAGES_PER_DOC = 6;
+  // HiDPI rendering: raise canvas backing-store resolution for clearer PDF pages.
+  // Keep a cap to avoid excessive memory usage when several large PDFs are open.
+  const HI_DPI_MAX_SCALE = 2;
+  const MAX_CANVAS_PIXELS = 18_000_000;
+  const ZOOM_RERENDER_IDLE_MS = 260;
+  const SYNC_ANCHOR_RATIO = 0.18;
   const SCROLL_RENDER_IDLE_FAST_MS = 460;
   const SCROLL_RENDER_IDLE_NORMAL_MS = 95;
   const FAST_SCROLL_PX_PER_MS = 1.4;
@@ -460,11 +467,11 @@
   }
 
   const HIGHLIGHT_COLORS = {
-    yellow: 'rgba(253, 224, 71, 0.46)',
-    green: 'rgba(134, 239, 172, 0.42)',
-    blue: 'rgba(147, 197, 253, 0.42)',
-    pink: 'rgba(249, 168, 212, 0.42)',
-    purple: 'rgba(196, 181, 253, 0.42)'
+    yellow: 'rgba(253, 224, 71, 0.40)',
+    green: 'rgba(134, 239, 172, 0.36)',
+    blue: 'rgba(147, 197, 253, 0.34)',
+    pink: 'rgba(249, 168, 212, 0.36)',
+    purple: 'rgba(196, 181, 253, 0.36)'
   };
 
   const HIGHLIGHT_DOT_COLORS = {
@@ -535,6 +542,45 @@
 
   function getActiveDoc() {
     return app.docs.find(d => d.id === app.userActiveDocId) || app.docs[0] || null;
+  }
+
+  function getSelectionRange() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || !String(sel.toString() || '').trim()) return null;
+    return sel.getRangeAt(0);
+  }
+
+  function findDocForSelection(range) {
+    if (!range) return null;
+
+    // Most reliable path: the selection node is inside the document wrapper.
+    const byNode = app.docs.find(doc => doc.wrapper.contains(range.commonAncestorContainer));
+    if (byNode) return byNode;
+
+    // Fallback for browser selections whose commonAncestorContainer is outside the actual text spans.
+    const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
+    if (!rects.length) return null;
+
+    const scores = new Map(app.docs.map(doc => [doc.id, 0]));
+    for (const rect of rects) {
+      for (const doc of app.docs) {
+        const box = doc.wrapper.getBoundingClientRect();
+        const xOverlap = Math.max(0, Math.min(rect.right, box.right) - Math.max(rect.left, box.left));
+        const yOverlap = Math.max(0, Math.min(rect.bottom, box.bottom) - Math.max(rect.top, box.top));
+        scores.set(doc.id, scores.get(doc.id) + xOverlap * yOverlap);
+      }
+    }
+
+    let bestDoc = null;
+    let bestScore = 0;
+    for (const doc of app.docs) {
+      const score = scores.get(doc.id) || 0;
+      if (score > bestScore) {
+        bestScore = score;
+        bestDoc = doc;
+      }
+    }
+    return bestScore > 0 ? bestDoc : null;
   }
 
   function shortText(s, len = 120) {
@@ -1107,6 +1153,8 @@
       canvas.height = 0;
     }
     page.el.innerHTML = `<div class="page-placeholder">第 ${index + 1} 页</div>`;
+    page.cssWidth = 0;
+    page.cssHeight = 0;
     page.loaded = false;
     doc.rendered.delete(index);
   }
@@ -1246,6 +1294,7 @@
       destroyed: false,
       renderQueue: Promise.resolve(),
       renderTimer: 0,
+      zoomRerenderTimer: 0,
       renderRequestId: 0,
       lastScrollTop: 0,
       lastScrollTime: performance.now(),
@@ -1335,7 +1384,23 @@
       pageEl.dataset.ratio = String(defaultRatio);
       pageEl.innerHTML = `<div class="page-placeholder">第 ${i + 1} 页</div>`;
       doc.scroller.appendChild(pageEl);
-      doc.pages.push({ el: pageEl, ratio: defaultRatio, loaded: false, rendering: false, token: 0, task: null, detailsTimer: 0 });
+      doc.pages.push({ el: pageEl, ratio: defaultRatio, cssWidth: 0, cssHeight: 0, loaded: false, rendering: false, token: 0, task: null, detailsTimer: 0 });
+    }
+
+    // 关键：先读取每一页的真实宽高比，再开始同步滚动。
+    // 否则页面进入视口时才修正高度，会导致目标文档在翻页边界处跳动、露出空白、错位。
+    for (let i = 0; i < doc.pageCount; i++) {
+      try {
+        const page = await doc.pdf.getPage(i + 1);
+        const vp = page.getViewport({ scale: 1 });
+        const ratio = vp.height / vp.width;
+        const pageState = doc.pages[i];
+        pageState.ratio = ratio;
+        pageState.el.dataset.ratio = String(ratio);
+      } catch (_) {
+        // 单页尺寸读取失败时继续使用第一页比例。
+      }
+      if (i % 12 === 0) await waitFrame();
     }
   }
 
@@ -1539,7 +1604,17 @@
     const top = doc.scroller.scrollTop;
     const index = findPageIndexAt(doc, top);
     const el = doc.pages[index].el;
-    return { index, pct: (top - el.offsetTop) / Math.max(1, el.offsetHeight) };
+    return { index, pct: clamp((top - el.offsetTop) / Math.max(1, el.offsetHeight), 0, 0.999) };
+  }
+
+  function getSyncAnchorState(doc) {
+    if (!doc.pages.length) return { index: 0, pct: 0, anchorPx: 0 };
+    const anchorPx = Math.max(12, doc.scroller.clientHeight * SYNC_ANCHOR_RATIO);
+    const y = doc.scroller.scrollTop + anchorPx;
+    const index = findPageIndexAt(doc, y);
+    const el = doc.pages[index].el;
+    const pct = clamp((y - el.offsetTop) / Math.max(1, el.offsetHeight), 0, 0.999);
+    return { index, pct, anchorPx };
   }
 
   function restorePanelScrollState(doc, state) {
@@ -1547,24 +1622,35 @@
     const idx = clamp(state.index || 0, 0, Math.max(0, doc.pages.length - 1));
     const el = doc.pages[idx]?.el;
     if (!el) return;
-    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * (state.pct || 0);
+    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * clamp(state.pct || 0, 0, 0.999);
   }
 
   function scrollDocToPage(doc, pageIndex, pct = 0, syncAfter = false, preferIdleRender = false) {
     const idx = clamp(pageIndex, 0, Math.max(0, doc.pages.length - 1));
     const el = doc.pages[idx]?.el;
     if (!el) return;
-    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * clamp(pct, 0, 1);
+    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * clamp(pct, 0, 0.999);
     updateIndicator(doc);
     scheduleRenderAround(doc, preferIdleRender);
     scheduleWorkspaceSave();
     if (syncAfter) performSync(doc);
   }
 
+  function scrollDocToAnchor(doc, pageIndex, pct = 0, preferIdleRender = false) {
+    const idx = clamp(pageIndex, 0, Math.max(0, doc.pages.length - 1));
+    const el = doc.pages[idx]?.el;
+    if (!el) return;
+    const anchorPx = Math.max(12, doc.scroller.clientHeight * SYNC_ANCHOR_RATIO);
+    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * clamp(pct, 0, 0.999) - anchorPx;
+    updateIndicator(doc);
+    scheduleRenderAround(doc, preferIdleRender);
+    scheduleWorkspaceSave();
+  }
+
   function performSync(sourceDoc) {
     const sourceIndex = app.docs.indexOf(sourceDoc);
     if (sourceIndex < 0) return;
-    const sourceState = getPanelScrollState(sourceDoc);
+    const sourceState = getSyncAnchorState(sourceDoc);
     const sourcePage = sourceState.index;
     const pct = sourceState.pct;
 
@@ -1580,7 +1666,7 @@
       const sourceBase = activeAnchor[sourceIndex] || 0;
       const targetBase = activeAnchor[targetIndex] || 0;
       const targetPage = targetBase + (sourcePage - sourceBase);
-      scrollDocToPage(doc, targetPage, pct, false, sourceDoc.scrollFast);
+      scrollDocToAnchor(doc, targetPage, pct, sourceDoc.scrollFast);
     });
     requestAnimationFrame(() => { app.syncing = false; });
   }
@@ -1605,9 +1691,8 @@
     doc.zoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
     doc.zInput.value = Math.round(doc.zoom * 100);
     applyPanelWidth(doc);
-    invalidatePagesForZoom(doc);
     restorePanelScrollState(doc, state);
-    scheduleRenderAround(doc);
+    scheduleZoomRerender(doc);
     scheduleWorkspaceSave();
     updateMemoryStats();
   }
@@ -1615,7 +1700,19 @@
   function applyGlobalZoom(pct) {
     const zoom = clamp((parseInt(pct, 10) || 90) / 100, MIN_ZOOM, MAX_ZOOM);
     els.globalZoomInput.value = Math.round(zoom * 100);
+    const sourceDoc = getActiveDoc();
     app.docs.forEach(doc => setDocZoom(doc, zoom));
+    if (sourceDoc && app.syncEnabled && app.docs.includes(sourceDoc)) {
+      requestAnimationFrame(() => requestAnimationFrame(() => performSync(sourceDoc)));
+    }
+  }
+
+  function applyPageVisualScale(page) {
+    const content = page.el.querySelector('.page-content');
+    if (!content || !page.cssWidth) return;
+    const targetWidth = parseFloat(page.el.style.width) || page.el.clientWidth || page.cssWidth;
+    const scale = targetWidth / Math.max(1, page.cssWidth);
+    content.style.transform = Math.abs(scale - 1) < 0.001 ? '' : `scale(${scale})`;
   }
 
   function applyPanelWidth(doc) {
@@ -1624,11 +1721,29 @@
     for (const page of doc.pages) {
       page.el.style.width = `${targetWidth}px`;
       page.el.style.height = `${Math.floor(targetWidth * page.ratio)}px`;
+      if (page.loaded) applyPageVisualScale(page);
     }
   }
 
   function applyAllPanelWidths() {
     app.docs.forEach(applyPanelWidth);
+  }
+
+  function scheduleZoomRerender(doc) {
+    if (!doc.pdf || !doc.pages.length || doc.destroyed) return;
+    clearTimeout(doc.zoomRerenderTimer);
+    doc.zoomRerenderTimer = setTimeout(() => {
+      if (doc.destroyed) return;
+      const current = getCurrentPageIndex(doc);
+      const start = clamp(current - PREFETCH_PAGES, 0, doc.pages.length - 1);
+      const end = clamp(current + PREFETCH_PAGES, 0, doc.pages.length - 1);
+      const indices = [];
+      for (let i = start; i <= end; i++) indices.push(i);
+      indices.sort((a, b) => Math.abs(a - current) - Math.abs(b - current));
+      for (const i of indices) renderPage(doc, i, { force: doc.pages[i]?.loaded });
+      pruneRenderedPages(doc, current, start, end);
+      updateMemoryStats();
+    }, ZOOM_RERENDER_IDLE_MS);
   }
 
   function scheduleRenderAll() {
@@ -1702,16 +1817,27 @@
     });
   }
 
-  function renderPage(doc, index) {
+  function renderPage(doc, index, options = {}) {
+    const force = options.force === true;
     const pageState = doc.pages[index];
-    if (!pageState || pageState.loaded || pageState.rendering || doc.destroyed) {
-      if (pageState?.loaded) doc.rendered.set(index, { lastUsed: performance.now() });
+    if (!pageState || doc.destroyed) return;
+
+    if (pageState.rendering) {
+      if (!force) return;
+      pageState.token++;
+      cancelPageWork(pageState);
+      pageState.rendering = false;
+    }
+
+    if (pageState.loaded && !force) {
+      doc.rendered.set(index, { lastUsed: performance.now() });
       return;
     }
 
     pageState.rendering = true;
     const token = ++pageState.token;
-    if (!pageState.el.querySelector('canvas')) {
+    const hasOldContent = !!pageState.el.querySelector('.page-content');
+    if (!hasOldContent) {
       pageState.el.innerHTML = `<div class="page-placeholder">渲染第 ${index + 1} 页...</div>`;
     }
 
@@ -1720,6 +1846,7 @@
       if (!isRenderStillRelevant(doc, index)) return;
 
       let canvas = null;
+      let content = null;
       try {
         const page = await doc.pdf.getPage(index + 1);
         if (doc.destroyed || token !== pageState.token || !isRenderStillRelevant(doc, index)) return;
@@ -1735,16 +1862,34 @@
 
         canvas = document.createElement('canvas');
         const ctx = canvas.getContext('2d', { alpha: false });
-        canvas.width = Math.ceil(viewport.width);
-        canvas.height = Math.ceil(viewport.height);
-        canvas.style.width = `${viewport.width}px`;
-        canvas.style.height = `${viewport.height}px`;
+
+        const cssWidth = Math.round(viewport.width);
+        const cssHeight = Math.round(viewport.height);
+        const rawOutputScale = window.devicePixelRatio || 1;
+        const pixelCapScale = Math.sqrt(MAX_CANVAS_PIXELS / Math.max(1, cssWidth * cssHeight));
+        const outputScale = Math.max(1, Math.min(rawOutputScale, HI_DPI_MAX_SCALE, pixelCapScale));
+
+        canvas.width = Math.max(1, Math.floor(cssWidth * outputScale));
+        canvas.height = Math.max(1, Math.floor(cssHeight * outputScale));
+        canvas.style.width = `${cssWidth}px`;
+        canvas.style.height = `${cssHeight}px`;
+        canvas.dataset.outputScale = String(outputScale);
+
         ctx.save();
         ctx.fillStyle = '#fff';
         ctx.fillRect(0, 0, canvas.width, canvas.height);
         ctx.restore();
 
-        const renderTask = page.render({ canvasContext: ctx, viewport });
+        content = document.createElement('div');
+        content.className = 'page-content';
+        content.style.width = `${cssWidth}px`;
+        content.style.height = `${cssHeight}px`;
+        content.dataset.baseWidth = String(cssWidth);
+        content.dataset.baseHeight = String(cssHeight);
+        content.appendChild(canvas);
+
+        const transform = outputScale !== 1 ? [outputScale, 0, 0, outputScale, 0, 0] : null;
+        const renderTask = page.render({ canvasContext: ctx, transform, viewport, intent: 'display' });
         pageState.task = renderTask;
         try {
           await renderTask.promise;
@@ -1757,7 +1902,9 @@
           return;
         }
 
-        pageState.el.replaceChildren(canvas);
+        pageState.cssWidth = cssWidth;
+        pageState.cssHeight = cssHeight;
+        pageState.el.replaceChildren(content);
         pageState.loaded = true;
         doc.rendered.set(index, { lastUsed: performance.now() });
         renderStoredNotesForPage(doc, index);
@@ -1766,7 +1913,7 @@
         const cancelled = err?.name === 'RenderingCancelledException' || /cancel/i.test(String(err?.message || err));
         if (!cancelled) console.error('page render failed', err);
         if (canvas) { canvas.width = 0; canvas.height = 0; }
-        if (!cancelled && token === pageState.token) {
+        if (!cancelled && token === pageState.token && !hasOldContent) {
           pageState.el.innerHTML = `<div style="color:var(--danger);padding:12px;">第 ${index + 1} 页渲染失败</div>`;
         }
       } finally {
@@ -1787,7 +1934,9 @@
         textLayer.style.width = `${viewport.width}px`;
         textLayer.style.height = `${viewport.height}px`;
         textLayer.style.setProperty('--scale-factor', scale);
-        pageState.el.appendChild(textLayer);
+        const content = pageState.el.querySelector('.page-content');
+        if (!content) return;
+        content.appendChild(textLayer);
         const textContent = await page.getTextContent();
         if (doc.destroyed || token !== pageState.token || !pageState.loaded || !isRenderStillRelevant(doc, index)) {
           textLayer.remove();
@@ -1807,7 +1956,9 @@
       try {
         const annotations = await page.getAnnotations();
         if (doc.destroyed || token !== pageState.token || !pageState.loaded) return;
-        addAnnotationLinks(doc, pageState.el, annotations, viewport);
+        const content = pageState.el.querySelector('.page-content');
+        if (!content) return;
+        addAnnotationLinks(doc, content, annotations, viewport);
         renderStoredNotesForPage(doc, index);
       } catch (err) {
         console.warn('annotation render failed', err);
@@ -2127,26 +2278,34 @@
       createdAt: existing?.createdAt || Date.now()
     });
     toast('页面便签已保存。');
-    openNotesTab(doc);
   }
 
   function rectIntersectsPage(rect, pageBox) {
     return rect.right > pageBox.left && rect.left < pageBox.right && rect.bottom > pageBox.top && rect.top < pageBox.bottom;
   }
 
-  async function addHighlightFromSelection(doc = getActiveDoc()) {
-    if (!doc) { toast('请先打开并加载 PDF。'); return; }
+  async function addHighlightFromSelection(preferredDoc = getActiveDoc()) {
     const sel = window.getSelection();
     const selectedText = String(sel?.toString() || '').trim();
-    if (!sel || sel.rangeCount === 0 || !selectedText) {
+    const range = getSelectionRange();
+
+    if (!range || !selectedText) {
       toast('请先在 PDF 文本上选中要高亮的内容。');
       return;
     }
-    const range = sel.getRangeAt(0);
-    if (!doc.wrapper.contains(range.commonAncestorContainer)) {
-      toast('选中的文本不在当前文档中。');
+
+    // Do not trust the last active panel blindly: toolbar clicks may happen after selecting text
+    // in another panel, and the selection object may not update activeDoc.
+    let doc = preferredDoc && preferredDoc.wrapper.contains(range.commonAncestorContainer)
+      ? preferredDoc
+      : findDocForSelection(range);
+
+    if (!doc) {
+      toast('没有识别到选中的 PDF 文档；请在页面文字层加载完成后重新选择。', 2600);
       return;
     }
+    app.userActiveDocId = doc.id;
+
     const rawRects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
     const rects = [];
     for (const r of rawRects) {
@@ -2161,10 +2320,12 @@
         if (x2 - x1 > 0.002 && y2 - y1 > 0.002) rects.push({ pageIndex: i, x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
       }
     }
+
     if (!rects.length) {
       toast('没有取得有效的文本位置；请确认页面文字层已加载后再选中。', 2600);
       return;
     }
+
     const firstPage = rects.reduce((min, r) => Math.min(min, r.pageIndex), rects[0].pageIndex);
     const result = await openNoteEditor({
       title: '添加文本高亮',
@@ -2172,6 +2333,7 @@
       text: '',
       allowDelete: false
     });
+
     if (result.action !== 'save') return;
     upsertNote({
       id: makeNoteId(),
@@ -2187,9 +2349,9 @@
       rects,
       createdAt: Date.now()
     });
+
     sel.removeAllRanges();
     toast('高亮已保存。');
-    openNotesTab(doc);
   }
 
   function renderStoredNotesForPage(doc, pageIndex) {
