@@ -6,6 +6,8 @@
 <title>Parallel Reader - 极简项目批注版</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/KaTeX/0.16.9/katex.min.js"></script>
 <style>
   :root { color-scheme: light; }
 
@@ -129,6 +131,12 @@
     flex:1 1 0; min-width:280px; display:flex; flex-direction:column; overflow:hidden; background:var(--surface);
     border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow);
   }
+  .panel-wrapper.loading .pdf-panel { opacity:0; }
+  .panel-wrapper.loading .panel-body { position:relative; }
+  .panel-wrapper.loading .panel-body::after {
+    content:"正在加载 PDF…"; position:absolute; inset:0; display:grid; place-items:center;
+    color:var(--text-muted); font-size:13px; background:var(--surface-2); z-index:2;
+  }
   .panel-wrapper:last-child { border-right:1px solid var(--border); }
   .panel-header {
     min-height:44px; padding:7px 9px; display:flex; align-items:center; justify-content:space-between; gap:8px;
@@ -150,8 +158,9 @@
   .panel-sidebar {
     width:250px; flex:0 0 250px; display:none; flex-direction:column; overflow:hidden; background:var(--sidebar-bg); border-right:1px solid var(--border-soft); font-size:12px;
   }
-  .sidebar-tabs { display:flex; gap:4px; padding:8px; border-bottom:1px solid var(--border-soft); flex:0 0 auto; }
-  .sidebar-tab { flex:1; height:30px; padding:0 8px; color:var(--text-muted); background:transparent; border:1px solid transparent; border-radius:999px; cursor:pointer; font-size:12px; }
+  .sidebar-tabs { display:flex; gap:4px; padding:8px; border-bottom:1px solid var(--border-soft); flex:0 0 auto; overflow-x:auto; }
+  .sidebar-tabs::-webkit-scrollbar { height: 0; }
+  .sidebar-tab { flex:1; min-width:40px; height:30px; padding:0 8px; color:var(--text-muted); background:transparent; border:1px solid transparent; border-radius:999px; cursor:pointer; font-size:12px; }
   .sidebar-tab:hover { background:var(--btn-hover); }
   .sidebar-tab.active { color:var(--accent); font-weight:760; border-color:var(--accent); background:var(--accent-soft); }
   .sidebar-content { flex:1; min-height:0; overflow:auto; padding:10px; scrollbar-gutter:stable; }
@@ -175,16 +184,29 @@
   .page-placeholder { user-select:none; color:var(--text-muted); opacity:.72; }
   .page-content { position:absolute; left:0; top:0; transform-origin:0 0; will-change:transform; mix-blend-mode:var(--page-blend); }
   .page-wrapper canvas { display:block; filter:var(--page-filter); mix-blend-mode:normal; image-rendering:auto; backface-visibility:hidden; }
-  .textLayer { position:absolute; inset:0; overflow:hidden; transform-origin:0 0; }
+  .textLayer { position:absolute; inset:0; overflow:hidden; transform-origin:0 0; z-index:6; }
   .textLayer ::selection { background:var(--selection)!important; color:transparent!important; }
   .pdf-link { position:absolute; z-index:20; border-radius:4px; transition:background .12s, box-shadow .12s; }
   .pdf-link:hover { background:rgba(37,99,235,.14); box-shadow:0 0 0 1px rgba(37,99,235,.26) inset; }
+  .search-hit-layer { position:absolute; inset:0; z-index:9; pointer-events:none; }
+  .search-hit {
+    position:absolute; border-radius:4px;
+    background:rgba(255, 221, 51, .62);
+    outline:3px solid rgba(245, 158, 11, .96);
+    box-shadow:0 0 0 4px rgba(245, 158, 11, .18), 0 8px 20px rgba(245, 158, 11, .22);
+    mix-blend-mode:multiply;
+    animation:searchHitPulse 1.15s ease-in-out 0s 3;
+  }
+  body.theme-dark .search-hit { mix-blend-mode:screen; background:rgba(250, 204, 21, .38); outline-color:rgba(251, 191, 36, .95); }
+  @keyframes searchHitPulse {
+    0%, 100% { transform:scale(1); opacity:.92; }
+    50% { transform:scale(1.025); opacity:1; }
+  }
   .toast {
     position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(8px); padding:10px 14px; border-radius:999px;
     background:rgba(15,23,42,.88); color:#fff; font-size:13px; z-index:999; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; box-shadow:0 16px 40px rgba(0,0,0,.22); backdrop-filter:blur(10px);
   }
   .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
-
 
   .notes-actions { display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
   .notes-actions .mini-btn { height:28px; }
@@ -193,38 +215,137 @@
   .notes-list { display:flex; flex-direction:column; gap:8px; }
   .note-item { padding:9px 9px; border:1px solid var(--border-soft); border-radius:12px; background:var(--surface); cursor:pointer; line-height:1.42; }
   .note-item:hover { background:var(--sidebar-hover); border-color:var(--border); }
+  .note-item.active-note {
+    border-color:var(--accent);
+    background:var(--accent-soft);
+    box-shadow:0 0 0 2px color-mix(in srgb, var(--accent) 16%, transparent);
+  }
   .note-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px; font-size:11px; color:var(--text-muted); }
   .note-type { color:var(--accent); font-weight:760; display:inline-flex; align-items:center; gap:5px; }
   .note-color-dot { width:9px; height:9px; border-radius:999px; display:inline-block; border:1px solid rgba(15,23,42,.16); }
   .note-title { font-size:12px; color:var(--text-main); font-weight:720; margin-bottom:3px; word-break:break-word; }
-  .note-body { font-size:12px; color:var(--text-muted); word-break:break-word; white-space:pre-wrap; max-height:72px; overflow:hidden; }
+  .note-locator { display:flex; align-items:center; gap:6px; flex-wrap:wrap; margin-bottom:6px; font-size:11px; color:var(--text-muted); }
+  .note-chip { display:inline-flex; align-items:center; height:20px; padding:0 7px; border-radius:999px; background:var(--accent-soft); color:var(--accent); font-weight:760; }
+  .note-excerpt-label { margin-top:6px; margin-bottom:3px; font-size:11px; color:var(--text-muted); font-weight:760; }
+  .note-quote { padding:6px 8px; border-radius:10px; background:rgba(148,163,184,.10); color:var(--text-muted); font-size:11.5px; line-height:1.45; word-break:break-word; }
+  .note-body { font-size:12px; color:var(--text-main); word-break:break-word; max-height:180px; overflow:auto; padding:7px 8px; border-radius:10px; background:var(--surface-2); }
+  .note-body:empty::before { content:"（空批注）"; color:var(--text-muted); }
+  .markdown-body { line-height:1.55; color:inherit; }
+  .markdown-body p { margin:0 0 6px; }
+  .markdown-body p:last-child { margin-bottom:0; }
+  .markdown-body ul, .markdown-body ol { margin:4px 0 8px 18px; padding:0; }
+  .markdown-body li { margin:2px 0; }
+  .markdown-body blockquote { margin:6px 0; padding:4px 8px; border-left:3px solid var(--border); background:var(--surface-2); border-radius:8px; }
+  .markdown-body code { padding:1px 5px; border-radius:6px; background:var(--surface-2); color:var(--text-main); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.92em; }
+  .markdown-body pre { margin:6px 0; padding:8px; border-radius:10px; background:var(--surface-2); overflow:auto; }
+  .markdown-body pre code { padding:0; background:transparent; }
+  .markdown-body a { color:var(--accent); text-decoration:none; }
+  .markdown-body a:hover { text-decoration:underline; }
+  .markdown-body .katex-display { margin:.55em 0; overflow-x:auto; overflow-y:hidden; padding:2px 0; }
+  .markdown-body .katex { color:var(--text-main); }
+  .markdown-body .math-error { color:var(--danger); font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; }
+
+  .panel-wrapper { position:relative; }
+  .panel-resizer {
+    position:absolute; top:0; width:14px; height:100%;
+    cursor:col-resize; z-index:80; touch-action:none;
+  }
+  .panel-resizer-right { right:-7px; }
+  .panel-resizer-left { left:-7px; }
+  .panel-resizer::after {
+    content:""; position:absolute; top:48px; bottom:18px; left:6px; width:2px;
+    border-radius:999px; background:transparent; transition:background .14s, box-shadow .14s;
+  }
+  .panel-resizer:hover::after,
+  .panel-resizer.dragging::after {
+    background:var(--accent);
+    box-shadow:0 0 0 3px var(--accent-soft);
+  }
+  body.resizing-layout { cursor:col-resize!important; user-select:none; }
+  body.resizing-layout * { cursor:col-resize!important; }
+
   .note-actions-row { display:flex; gap:6px; margin-top:8px; }
   .note-actions-row button { height:24px; padding:0 8px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-main); font-size:11px; cursor:pointer; }
   .note-actions-row button:hover { background:var(--btn-hover); }
   .page-note-marker { position:absolute; right:10px; top:10px; z-index:18; min-width:26px; height:26px; padding:0 8px; border-radius:999px; border:1px solid rgba(202,138,4,.35); background:rgba(254,243,199,.92); color:#92400e; font-size:12px; font-weight:760; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 20px rgba(146,64,14,.16); backdrop-filter:blur(6px); }
   body.theme-dark .page-note-marker { background:rgba(120,77,20,.86); color:#fde68a; border-color:rgba(253,230,138,.30); }
-  .note-highlight-layer { position:absolute; inset:0; z-index:8; pointer-events:none; }
+  .note-highlight-layer { position:absolute; inset:0; z-index:7; pointer-events:none; }
   .note-highlight { position:absolute; border-radius:3px; box-shadow:0 0 0 1px rgba(15,23,42,.10) inset; mix-blend-mode:multiply; pointer-events:auto; cursor:pointer; }
   body.theme-dark .note-highlight { mix-blend-mode:screen; }
   .note-highlight:hover { outline:2px solid rgba(37,99,235,.38); }
-  .note-modal-backdrop { position:fixed; inset:0; z-index:1200; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(15,23,42,.28); backdrop-filter:blur(8px); }
-  .note-modal-backdrop.show { display:flex; }
-  .note-modal { width:min(520px,100%); border:1px solid var(--border); border-radius:20px; background:var(--surface); box-shadow:0 28px 80px rgba(15,23,42,.28); overflow:hidden; }
-  .note-modal-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border-soft); }
+  .note-modal-backdrop {
+    position:fixed; inset:0; z-index:1200; display:none; pointer-events:none;
+    background:transparent; backdrop-filter:none;
+  }
+  .note-modal-backdrop.show { display:block; }
+  .note-modal {
+    position:fixed; left:24px; top:78px; width:min(560px, calc(100vw - 48px)); height:520px;
+    min-width:340px; min-height:260px; max-width:calc(100vw - 24px); max-height:calc(100vh - 24px);
+    border:1px solid var(--border); border-radius:20px; background:var(--surface);
+    box-shadow:0 28px 80px rgba(15,23,42,.28); overflow:hidden; pointer-events:auto;
+    resize:both; display:flex; flex-direction:column;
+  }
+  .note-modal-header { display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 16px; border-bottom:1px solid var(--border-soft); cursor:move; user-select:none; }
   .note-modal-title { font-size:15px; font-weight:780; color:var(--text-main); }
   .note-modal-close { width:28px; height:28px; border:0; border-radius:999px; background:transparent; color:var(--text-muted); cursor:pointer; font-size:18px; }
   .note-modal-close:hover { background:var(--btn-hover); color:var(--danger); }
-  .note-modal-body { padding:14px 16px; }
-  .note-modal-hint { margin-bottom:8px; font-size:12px; color:var(--text-muted); line-height:1.45; }
-  .note-modal-text { width:100%; min-height:130px; resize:vertical; padding:11px 12px; border:1px solid var(--border); border-radius:14px; outline:none; background:var(--input-bg); color:var(--text-main); font-size:13px; line-height:1.55; }
+  .note-modal-body {
+    padding:14px 16px; flex:1; min-height:0;
+    display:flex; flex-direction:column; overflow:hidden;
+  }
+  .note-modal-hint { flex:0 0 auto; margin-bottom:8px; font-size:12px; color:var(--text-muted); line-height:1.45; }
+  .note-modal-text {
+    display:block; width:100%; max-width:100%; min-width:0; box-sizing:border-box;
+    flex:1 1 54%; min-height:80px; resize:none; overflow:auto; padding:11px 12px;
+    border:1px solid var(--border); border-radius:14px; outline:none;
+    background:var(--input-bg); color:var(--text-main); font-size:13px; line-height:1.55;
+  }
   .note-modal-text:focus { border-color:var(--accent); box-shadow:var(--focus); }
-  .note-modal-footer { display:flex; justify-content:space-between; gap:8px; padding:12px 16px 16px; }
+  .note-modal-splitter {
+    flex:0 0 12px; margin:7px 0; cursor:row-resize; position:relative; touch-action:none;
+  }
+  .note-modal-splitter::before {
+    content:""; position:absolute; left:38%; right:38%; top:5px; height:2px;
+    border-radius:999px; background:var(--border); transition:background .14s, left .14s, right .14s;
+  }
+  .note-modal-splitter:hover::before,
+  .note-modal-splitter.dragging::before {
+    left:28%; right:28%; background:var(--accent);
+  }
+  .note-modal-preview {
+    display:block; margin-top:0; padding:10px 12px; width:100%; max-width:100%; min-width:0; box-sizing:border-box;
+    flex:1 1 46%; min-height:70px; resize:none; overflow:auto;
+    border:1px dashed var(--border); border-radius:14px; background:var(--surface-2); font-size:13px;
+  }
+  .note-modal-preview:empty::before { content:"Markdown / LaTeX 预览"; color:var(--text-muted); opacity:.75; }
+  .note-modal-footer { flex:0 0 auto; display:flex; justify-content:space-between; gap:8px; padding:12px 16px 16px; border-top:1px solid var(--border-soft); }
   .note-modal-footer .left, .note-modal-footer .right { display:flex; gap:8px; }
   .note-modal-footer button { height:32px; padding:0 13px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-main); cursor:pointer; font-size:12px; }
   .note-modal-footer button:hover { background:var(--btn-hover); }
   .note-modal-footer .primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:760; }
   .note-modal-footer .danger { color:var(--danger); border-color:rgba(220,38,38,.35); }
   .note-modal-footer .danger:hover { background:var(--danger-soft); border-color:var(--danger); }
+
+  /* === 新增：分组相关样式 === */
+  .note-modal-groups { flex: 0 0 auto; margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border-soft); }
+  .group-input-wrapper { display: flex; gap: 6px; margin-bottom: 8px; }
+  .group-input-wrapper input { flex: 1; height: 28px; padding: 0 10px; border: 1px solid var(--border); border-radius: 6px; background: var(--input-bg); color: var(--text-main); font-size: 12px; }
+  .group-input-wrapper input:focus { border-color: var(--accent); outline: none; }
+  .note-group-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .group-tag { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--accent-soft); color: var(--accent); font-size: 11px; font-weight: 600; border-radius: 999px; }
+  .group-tag .remove-tag { cursor: pointer; opacity: 0.6; }
+  .group-tag .remove-tag:hover { opacity: 1; color: var(--danger); }
+  .note-group-relations { font-size: 11px; color: var(--text-muted); max-height: 80px; overflow-y: auto; }
+  .relation-link { color: var(--accent); cursor: pointer; text-decoration: underline; margin-right: 8px; display: inline-block; }
+  
+  .group-folder { margin-bottom: 8px; border: 1px solid var(--border-soft); border-radius: 8px; background: var(--surface); overflow: hidden; }
+  .group-folder-header { padding: 8px 10px; background: var(--surface-2); font-weight: 700; font-size: 12px; color: var(--text-main); cursor: pointer; display: flex; justify-content: space-between; }
+  .group-folder-header:hover { background: var(--btn-hover); }
+  .group-folder-content { padding: 6px; display: none; }
+  .group-folder.open .group-folder-content { display: block; }
+  .group-item-mini { padding: 6px; border-radius: 6px; cursor: pointer; font-size: 11px; margin-bottom: 4px; border: 1px solid transparent; }
+  .group-item-mini:hover { background: var(--sidebar-hover); border-color: var(--border-soft); }
+  .note-chip-group { font-size: 10px; padding: 1px 6px; background: var(--border-soft); border-radius: 4px; margin-right: 4px; color: var(--text-muted); }
 
   @media (max-width: 900px) {
     .brand { min-width:100%; flex-direction:row; align-items:baseline; gap:8px; }
@@ -311,6 +432,22 @@
         </div>
       </div>
       <div class="menu-row">
+        <span class="menu-label">单文档宽度</span>
+        <div class="zoom-group" title="只有打开 1 个 PDF 时生效">
+          <button id="btnSingleWidthDown" class="mini-btn">−</button>
+          <input id="singleWidthInput" class="data-input" type="number" value="92" min="45" max="100" title="单文档面板宽度，回车生效">
+          <span style="font-size:11px;color:var(--text-muted)">%</span>
+          <button id="btnSingleWidthUp" class="mini-btn">+</button>
+        </div>
+      </div>
+      <div class="menu-row">
+        <span class="menu-label">单文档位置</span>
+        <select id="singleAlignSelect" title="只有打开 1 个 PDF 时生效"><option value="flex-start">靠左</option><option value="center" selected>居中</option><option value="flex-end">靠右</option></select>
+      </div>
+      <div class="menu-row">
+        <button id="btnResetLayout" title="重置单文档宽度、位置和多文档占比">重置布局</button>
+      </div>
+      <div class="menu-row">
         <span class="menu-label">主题</span>
         <select id="themeSelect" title="主题"><option value="normal">清新白</option><option value="dark">深色</option><option value="green">豆沙绿</option><option value="sepia">米色纸</option><option value="gray">柔和灰</option></select>
       </div>
@@ -336,6 +473,18 @@
     <div class="note-modal-body">
       <div id="noteModalHint" class="note-modal-hint"></div>
       <textarea id="noteModalText" class="note-modal-text" placeholder="输入笔记内容..."></textarea>
+      <div id="noteModalSplit" class="note-modal-splitter" title="拖拽调整输入区和预览区高度"></div>
+      <div id="noteModalPreview" class="note-modal-preview markdown-body"></div>
+      
+      <div class="note-modal-groups">
+        <div class="group-input-wrapper">
+          <input type="text" id="noteGroupInput" placeholder="输入组名并回车添加，或从已有组选择..." list="existingGroupsList">
+          <datalist id="existingGroupsList"></datalist>
+          <button type="button" id="btnAddGroup" class="mini-btn">加入组</button>
+        </div>
+        <div id="noteGroupTags" class="note-group-tags"></div>
+        <div id="noteGroupRelations" class="note-group-relations"></div>
+      </div>
     </div>
     <div class="note-modal-footer">
       <div class="left"><button id="noteModalDelete" class="danger" type="button">删除</button></div>
@@ -356,12 +505,13 @@
   const PREFETCH_PAGES = 1;
   const KEEP_DISTANCE = 3;
   const MAX_RENDERED_PAGES_PER_DOC = 6;
-  // HiDPI rendering: raise canvas backing-store resolution for clearer PDF pages.
-  // Keep a cap to avoid excessive memory usage when several large PDFs are open.
   const HI_DPI_MAX_SCALE = 2;
   const MAX_CANVAS_PIXELS = 18_000_000;
   const ZOOM_RERENDER_IDLE_MS = 260;
   const SYNC_ANCHOR_RATIO = 0.18;
+  const BOUNDARY_SYNC_SWITCH_RATIO = 0.50;
+  const BOUNDARY_BLEND_START = 0.34;
+  const BOUNDARY_BLEND_END = 0.66;
   const SCROLL_RENDER_IDLE_FAST_MS = 460;
   const SCROLL_RENDER_IDLE_NORMAL_MS = 95;
   const FAST_SCROLL_PX_PER_MS = 1.4;
@@ -392,6 +542,11 @@
     btnGlobalZoomOut: document.getElementById('btnGlobalZoomOut'),
     btnGlobalZoomIn: document.getElementById('btnGlobalZoomIn'),
     globalZoomInput: document.getElementById('globalZoomInput'),
+    btnSingleWidthDown: document.getElementById('btnSingleWidthDown'),
+    btnSingleWidthUp: document.getElementById('btnSingleWidthUp'),
+    singleWidthInput: document.getElementById('singleWidthInput'),
+    singleAlignSelect: document.getElementById('singleAlignSelect'),
+    btnResetLayout: document.getElementById('btnResetLayout'),
     themeSelect: document.getElementById('themeSelect'),
     fileListHint: document.getElementById('fileListHint'),
     memoryHint: document.getElementById('memoryHint'),
@@ -412,6 +567,7 @@
     noteModalTitle: document.getElementById('noteModalTitle'),
     noteModalHint: document.getElementById('noteModalHint'),
     noteModalText: document.getElementById('noteModalText'),
+    noteModalPreview: document.getElementById('noteModalPreview'),
     noteModalClose: document.getElementById('noteModalClose'),
     noteModalSave: document.getElementById('noteModalSave'),
     noteModalCancel: document.getElementById('noteModalCancel'),
@@ -441,6 +597,8 @@
     autoSaveProject: true,
     savePdfCopy: true,
     highlightColor: 'yellow',
+    singleDocWidth: 92,
+    singleDocAlign: 'center',
     notes: []
   };
 
@@ -452,6 +610,11 @@
     return Math.max(min, Math.min(max, n));
   }
 
+  function smoothstep(edge0, edge1, x) {
+    const t = clamp((x - edge0) / Math.max(0.0001, edge1 - edge0), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
+
   function escapeHtml(s) {
     return String(s).replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
   }
@@ -460,7 +623,392 @@
     return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   }
 
+  function findSearchMatchInfo(textItems, matchIdx, queryLength, viewport) {
+    let offset = 0;
 
+    for (let itemIndex = 0; itemIndex < textItems.length; itemIndex++) {
+      const item = textItems[itemIndex];
+      const str = String(item.str || '');
+      const start = offset;
+      const end = start + str.length;
+
+      if (matchIdx >= start && matchIdx <= end && str.trim()) {
+        const localStart = clamp(matchIdx - start, 0, Math.max(0, str.length - 1));
+        const localLen = Math.max(1, Math.min(queryLength, Math.max(1, str.length - localStart)));
+
+        try {
+          const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
+          const itemWidth = Math.max(1, Number(item.width || 0));
+          const itemHeight = Math.max(6, Number(item.height || 12));
+          const x = tx[4] + itemWidth * (localStart / Math.max(1, str.length));
+          const y = tx[5] - itemHeight;
+          const w = Math.max(8, itemWidth * (localLen / Math.max(1, str.length)));
+          const h = itemHeight * 1.32;
+
+          const rect = {
+            x: clamp(x / Math.max(1, viewport.width), 0, 0.999),
+            y: clamp(y / Math.max(1, viewport.height), 0, 0.999),
+            w: clamp(w / Math.max(1, viewport.width), 0.006, 1),
+            h: clamp(h / Math.max(1, viewport.height), 0.006, 1)
+          };
+
+          return {
+            pagePct: clamp((rect.y + rect.h / 2), 0, 0.999),
+            rect,
+            itemIndex,
+            localStart,
+            localLen,
+            itemTextLength: Math.max(1, str.length)
+          };
+        } catch (_) {
+          return { pagePct: null, rect: null, itemIndex, localStart, localLen, itemTextLength: Math.max(1, str.length) };
+        }
+      }
+
+      offset += str.length + 1;
+    }
+
+    return { pagePct: null, rect: null, itemIndex: -1, localStart: 0, localLen: 0, itemTextLength: 1 };
+  }
+
+  function scrollDocToSearchMatch(doc, pageIndex, matchInfo = {}, syncAfter = false) {
+    const idx = clamp(pageIndex, 0, Math.max(0, doc.pages.length - 1));
+    const el = doc.pages[idx]?.el;
+    if (!el) return;
+
+    const pendingHit = {
+      pageIndex: idx,
+      rect: matchInfo.rect || null,
+      pagePct: matchInfo.pagePct ?? 0.5,
+      itemIndex: Number.isFinite(matchInfo.itemIndex) ? matchInfo.itemIndex : -1,
+      localStart: matchInfo.localStart || 0,
+      localLen: matchInfo.localLen || 0,
+      itemTextLength: matchInfo.itemTextLength || 1,
+      createdAt: Date.now(),
+      recentered: false
+    };
+
+    const exactRect = getExactSearchRectFromTextLayer(doc, idx, pendingHit);
+    if (exactRect) pendingHit.rect = exactRect;
+
+    const rect = pendingHit.rect || null;
+    const pagePct = pendingHit.pagePct ?? 0.5;
+    const yInPage = rect
+      ? (rect.y + rect.h / 2) * el.offsetHeight
+      : clamp(pagePct, 0, 0.999) * el.offsetHeight;
+
+    const targetY = el.offsetTop + yInPage - doc.scroller.clientHeight / 2;
+    doc.scroller.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+    updateIndicator(doc);
+
+    doc.searchHit = pendingHit;
+    scheduleRenderAround(doc);
+    renderSearchHitForPage(doc, idx);
+
+    clearTimeout(doc.searchHitTimer);
+    doc.searchHitTimer = setTimeout(() => {
+      if (doc.searchHit?.pageIndex === idx) doc.searchHit = null;
+      doc.pages[idx]?.el?.querySelector('.search-hit-layer')?.remove();
+    }, 9000);
+
+    scheduleWorkspaceSave();
+    if (syncAfter) {
+      setTimeout(() => performSync(doc), 120);
+    }
+  }
+
+
+  function getExactSearchRectFromTextLayer(doc, pageIndex, hit) {
+    const pageState = doc.pages[pageIndex];
+    const content = pageState?.el?.querySelector('.page-content');
+    const textDivs = pageState?.textDivs;
+    if (!content || !textDivs || hit.itemIndex < 0 || !textDivs[hit.itemIndex]) return null;
+
+    const div = textDivs[hit.itemIndex];
+    const contentBox = content.getBoundingClientRect();
+    const box = div.getBoundingClientRect();
+    if (!contentBox.width || !contentBox.height || !box.width || !box.height) return null;
+
+    const startRatio = clamp(hit.localStart / Math.max(1, hit.itemTextLength), 0, 0.98);
+    const lenRatio = clamp(hit.localLen / Math.max(1, hit.itemTextLength), 0.02, 1);
+    const xPx = (box.left - contentBox.left) + box.width * startRatio;
+    const yPx = box.top - contentBox.top;
+    const wPx = Math.max(8, box.width * lenRatio);
+    const hPx = Math.max(8, box.height);
+
+    return {
+      x: clamp(xPx / contentBox.width, 0, 0.999),
+      y: clamp(yPx / contentBox.height, 0, 0.999),
+      w: clamp(wPx / contentBox.width, 0.006, 1),
+      h: clamp(hPx / contentBox.height, 0.006, 1)
+    };
+  }
+
+  function recenterSearchHit(doc, pageIndex, rect) {
+    const hit = doc.searchHit;
+    if (!hit || hit.pageIndex !== pageIndex || hit.recentered) return;
+    if (Date.now() - hit.createdAt > 3500) return;
+
+    const el = doc.pages[pageIndex]?.el;
+    if (!el) return;
+
+    const yInPage = (rect.y + rect.h / 2) * el.offsetHeight;
+    const targetY = Math.max(0, el.offsetTop + yInPage - doc.scroller.clientHeight / 2);
+
+    if (Math.abs(doc.scroller.scrollTop - targetY) > 18) {
+      doc.scroller.scrollTo({ top: targetY, behavior: 'smooth' });
+    }
+    hit.recentered = true;
+  }
+
+  function centerSearchHitElement(doc, element, hit) {
+    if (!doc || !element || !hit) return;
+    if (hit.centeredAt && Date.now() - hit.centeredAt < 800) return;
+
+    requestAnimationFrame(() => {
+      try {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+        hit.centeredAt = Date.now();
+      } catch (_) {
+        const pageState = doc.pages[hit.pageIndex];
+        const el = pageState?.el;
+        if (!el) return;
+        const r = hit.rect || { y: hit.pagePct ?? 0.5, h: 0.02 };
+        const yInPage = (r.y + r.h / 2) * el.offsetHeight;
+        doc.scroller.scrollTo({ top: Math.max(0, el.offsetTop + yInPage - doc.scroller.clientHeight / 2), behavior: 'smooth' });
+        hit.centeredAt = Date.now();
+      }
+    });
+  }
+
+  function renderSearchHitForPage(doc, pageIndex) {
+    const hit = doc.searchHit;
+    const pageState = doc.pages[pageIndex];
+    if (!hit || hit.pageIndex !== pageIndex || !pageState?.loaded) return;
+
+    const content = pageState.el.querySelector('.page-content');
+    if (!content) return;
+    content.querySelector('.search-hit-layer')?.remove();
+
+    const exactRect = getExactSearchRectFromTextLayer(doc, pageIndex, hit);
+    const r = exactRect || hit.rect || { x: 0.12, y: 0.45, w: 0.76, h: 0.055 };
+
+    if (exactRect) {
+      hit.rect = exactRect;
+    }
+
+    const layer = document.createElement('div');
+    layer.className = 'search-hit-layer';
+
+    const div = document.createElement('div');
+    div.className = 'search-hit';
+    div.style.left = `${r.x * 100}%`;
+    div.style.top = `${r.y * 100}%`;
+    div.style.width = `${Math.max(0.02, r.w) * 100}%`;
+    div.style.height = `${Math.max(0.012, r.h) * 100}%`;
+
+    layer.appendChild(div);
+    content.appendChild(layer);
+
+    if (hit.shouldCenter !== false) {
+      centerSearchHitElement(doc, div, hit);
+    }
+  }
+
+  function renderLatex(src, displayMode = false) {
+    const latex = String(src || '').trim();
+    if (!latex) return '';
+    if (window.katex?.renderToString) {
+      try {
+        return window.katex.renderToString(latex, {
+          displayMode,
+          throwOnError: false,
+          strict: 'ignore',
+          trust: false,
+          output: 'html'
+        });
+      } catch (err) {
+        return `<span class="math-error">${escapeHtml(latex)}</span>`;
+      }
+    }
+    return `<span class="math-error">${escapeHtml(displayMode ? `$$${latex}$$` : `$${latex}$`)}</span>`;
+  }
+
+  function renderInlineText(raw) {
+    let s = escapeHtml(raw || '');
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    s = s.replace(/(?<!\*)\*([^*\n]+)\*(?!\*)/g, '<em>$1</em>');
+    s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+    return s;
+  }
+
+  function renderMarkdownInline(raw) {
+    const input = String(raw || '');
+    const out = [];
+    let i = 0;
+    let buffer = '';
+
+    const flush = () => {
+      if (buffer) {
+        out.push(renderInlineText(buffer));
+        buffer = '';
+      }
+    };
+
+    while (i < input.length) {
+      if (input.startsWith('\\(', i)) {
+        const end = input.indexOf('\\)', i + 2);
+        if (end !== -1) {
+          flush();
+          out.push(renderLatex(input.slice(i + 2, end), false));
+          i = end + 2;
+          continue;
+        }
+      }
+
+      if (input[i] === '$' && input[i + 1] !== '$') {
+        const end = input.indexOf('$', i + 1);
+        if (end !== -1) {
+          const expr = input.slice(i + 1, end);
+          if (expr.trim()) {
+            flush();
+            out.push(renderLatex(expr, false));
+            i = end + 1;
+            continue;
+          }
+        }
+      }
+
+      buffer += input[i];
+      i++;
+    }
+
+    flush();
+    return out.join('');
+  }
+
+  function renderMarkdown(raw) {
+    const text = String(raw || '').replace(/\r\n/g, '\n').trim();
+    if (!text) return '';
+    const lines = text.split('\n');
+    const out = [];
+    let inCode = false;
+    let code = [];
+    let list = null;
+    let inMath = false;
+    let math = [];
+
+    const closeList = () => {
+      if (list) {
+        out.push(`<${list.type}>${list.items.map(item => `<li>${renderMarkdownInline(item)}</li>`).join('')}</${list.type}>`);
+        list = null;
+      }
+    };
+
+    const closeCode = () => {
+      if (inCode) {
+        out.push(`<pre><code>${escapeHtml(code.join('\n'))}</code></pre>`);
+        code = [];
+        inCode = false;
+      }
+    };
+
+    const closeMath = () => {
+      if (inMath) {
+        out.push(renderLatex(math.join('\n'), true));
+        math = [];
+        inMath = false;
+      }
+    };
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (/^\s*```/.test(line)) {
+        if (inMath) { math.push(line); continue; }
+        if (inCode) closeCode();
+        else { closeList(); inCode = true; code = []; }
+        continue;
+      }
+      if (inCode) { code.push(line); continue; }
+
+      if (trimmed === '$$' || trimmed === '\\[' || trimmed === '\\]') {
+        closeList();
+        if (inMath) closeMath();
+        else { inMath = true; math = []; }
+        continue;
+      }
+
+      if (trimmed.startsWith('$$') && trimmed.endsWith('$$') && trimmed.length > 4) {
+        closeList();
+        out.push(renderLatex(trimmed.slice(2, -2), true));
+        continue;
+      }
+
+      if (trimmed.startsWith('\\[') && trimmed.endsWith('\\]') && trimmed.length > 4) {
+        closeList();
+        out.push(renderLatex(trimmed.slice(2, -2), true));
+        continue;
+      }
+
+      if (inMath) {
+        math.push(line);
+        continue;
+      }
+
+      if (!trimmed) {
+        closeList();
+        continue;
+      }
+
+      const heading = /^(#{1,4})\s+(.+)$/.exec(line);
+      if (heading) {
+        closeList();
+        const level = Math.min(4, heading[1].length);
+        out.push(`<h${level}>${renderMarkdownInline(heading[2])}</h${level}>`);
+        continue;
+      }
+
+      const quote = /^>\s?(.+)$/.exec(line);
+      if (quote) {
+        closeList();
+        out.push(`<blockquote>${renderMarkdownInline(quote[1])}</blockquote>`);
+        continue;
+      }
+
+      const ul = /^[-*]\s+(.+)$/.exec(line);
+      const ol = /^\d+\.\s+(.+)$/.exec(line);
+      if (ul || ol) {
+        const type = ul ? 'ul' : 'ol';
+        if (!list || list.type !== type) {
+          closeList();
+          list = { type, items: [] };
+        }
+        list.items.push((ul || ol)[1]);
+        continue;
+      }
+
+      closeList();
+      out.push(`<p>${renderMarkdownInline(line)}</p>`);
+    }
+
+    closeMath();
+    closeCode();
+    closeList();
+    return out.join('');
+  }
+
+  function safeRenderMarkdown(raw) {
+    try {
+      const html = renderMarkdown(raw);
+      return html || '';
+    } catch (err) {
+      console.warn('Markdown render failed:', err);
+      return `<p>${escapeHtml(raw || '')}</p>`;
+    }
+  }
 
   function makeNoteId() {
     return `note_${Date.now()}_${Math.random().toString(16).slice(2)}`;
@@ -516,6 +1064,7 @@
         text: String(n.text || ''),
         note: String(n.note || ''),
         color: normalizeHighlightColor(String(n.color || 'yellow')),
+        groups: Array.isArray(n.groups) ? n.groups.map(String).filter(Boolean) : [],
         rects: Array.isArray(n.rects) ? n.rects.map(r => ({
           pageIndex: Math.max(0, Number(r.pageIndex || 0)),
           x: clamp(Number(r.x || 0), 0, 1),
@@ -526,6 +1075,12 @@
         createdAt: Number(n.createdAt || Date.now()),
         updatedAt: Number(n.updatedAt || n.createdAt || Date.now())
       }));
+  }
+
+  function getAllExistingGroups() {
+    const groups = new Set();
+    app.notes.forEach(n => n.groups?.forEach(g => groups.add(g)));
+    return Array.from(groups).sort();
   }
 
   function noteMatchesDoc(note, doc) {
@@ -553,11 +1108,9 @@
   function findDocForSelection(range) {
     if (!range) return null;
 
-    // Most reliable path: the selection node is inside the document wrapper.
     const byNode = app.docs.find(doc => doc.wrapper.contains(range.commonAncestorContainer));
     if (byNode) return byNode;
 
-    // Fallback for browser selections whose commonAncestorContainer is outside the actual text spans.
     const rects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
     if (!rects.length) return null;
 
@@ -598,7 +1151,6 @@
     clearTimeout(els.toast._timer);
     els.toast._timer = setTimeout(() => els.toast.classList.remove('show'), ms);
   }
-
 
   function openPersistentDB() {
     return new Promise((resolve, reject) => {
@@ -725,7 +1277,6 @@
     clearTimeout(app.persistTimer);
     app.persistTimer = setTimeout(() => writePersistentWorkspaceFull({ silent: true, saveFiles: app.savePdfCopy, ...options }), 900);
   }
-
 
   function makeExportFileName() {
     const first = app.docs[0]?.file?.name || 'parallel-reader';
@@ -904,6 +1455,12 @@
         document.body.className = `theme-${meta.theme}`;
       }
       if (meta.highlightColor) setHighlightColor(meta.highlightColor);
+      if (meta.layout) {
+        app.singleDocWidth = clamp(Number(meta.layout.singleDocWidth || 92), 45, 100);
+        app.singleDocAlign = ['flex-start','center','flex-end'].includes(meta.layout.singleDocAlign) ? meta.layout.singleDocAlign : 'center';
+        if (els.singleWidthInput) els.singleWidthInput.value = Math.round(app.singleDocWidth);
+        if (els.singleAlignSelect) els.singleAlignSelect.value = app.singleDocAlign;
+      }
       if (typeof meta.autoSave === 'boolean') els.chkAutoSave.checked = meta.autoSave;
       if (typeof meta.savePdfCopy === 'boolean') els.chkSavePdfCopy.checked = meta.savePdfCopy;
       const embedded = bundle.files
@@ -1041,6 +1598,12 @@
       document.body.className = `theme-${ws.theme}`;
     }
     if (ws?.highlightColor) setHighlightColor(ws.highlightColor);
+    if (ws?.layout) {
+      app.singleDocWidth = clamp(Number(ws.layout.singleDocWidth || 92), 45, 100);
+      app.singleDocAlign = ['flex-start','center','flex-end'].includes(ws.layout.singleDocAlign) ? ws.layout.singleDocAlign : 'center';
+      if (els.singleWidthInput) els.singleWidthInput.value = Math.round(app.singleDocWidth);
+      if (els.singleAlignSelect) els.singleAlignSelect.value = app.singleDocAlign;
+    }
     if (ws?.fileNames?.length) {
       els.memoryHint.style.display = 'inline-block';
       els.memoryHint.textContent = `上次：选择【${ws.fileNames.join(', ')}】可恢复状态`;
@@ -1057,7 +1620,8 @@
       lastModified: d.file.lastModified || 0,
       zoom: d.zoom,
       scroll: getPanelScrollState(d),
-      sidebarOpen: d.sidebar?.classList.contains('open') || false
+      sidebarOpen: d.sidebar?.classList.contains('open') || false,
+      flexWeight: d.flexWeight || 1
     }));
     return {
       version: 2,
@@ -1070,6 +1634,7 @@
       zooms: app.docs.map(d => d.zoom),
       theme: els.themeSelect.value,
       highlightColor: app.highlightColor,
+      layout: { singleDocWidth: app.singleDocWidth, singleDocAlign: app.singleDocAlign, docWeights: app.docs.map(d => d.flexWeight || 1) },
       syncEnabled: app.syncEnabled,
       anchors: app.anchors,
       notes: sanitizeNotes(app.notes),
@@ -1178,7 +1743,7 @@
 
   function makeDocSkeleton(file, restoredState, docIndex) {
     const wrapper = document.createElement('div');
-    wrapper.className = 'panel-wrapper';
+    wrapper.className = 'panel-wrapper loading';
     wrapper.draggable = false;
 
     const header = document.createElement('div');
@@ -1227,6 +1792,18 @@
     const pageTotal = document.createElement('span');
     pageTotal.textContent = '/ ?';
 
+    const widthDown = document.createElement('button');
+    widthDown.type = 'button';
+    widthDown.className = 'mini-btn';
+    widthDown.textContent = '窄';
+    widthDown.title = '缩小当前文档占比 / 单文档宽度';
+
+    const widthUp = document.createElement('button');
+    widthUp.type = 'button';
+    widthUp.className = 'mini-btn';
+    widthUp.textContent = '宽';
+    widthUp.title = '放大当前文档占比 / 单文档宽度';
+
     const close = document.createElement('button');
     close.type = 'button';
     close.className = 'btn-close';
@@ -1235,7 +1812,9 @@
 
     const div = document.createElement('div');
     div.className = 'divider';
-    controls.append(zOut, zInput, pct, zIn, div, pageInput, pageTotal, close);
+    const div2 = document.createElement('div');
+    div2.className = 'divider';
+    controls.append(zOut, zInput, pct, zIn, div, pageInput, pageTotal, div2, widthDown, widthUp, close);
     header.append(left, controls);
 
     const body = document.createElement('div');
@@ -1248,6 +1827,7 @@
         <button class="sidebar-tab active" data-tab="toc">目录</button>
         <button class="sidebar-tab" data-tab="search">检索</button>
         <button class="sidebar-tab" data-tab="notes">批注</button>
+        <button class="sidebar-tab" data-tab="groups">分组</button>
       </div>
       <div class="sidebar-content toc-area"><div style="color:var(--text-muted);padding:10px;">读取中...</div></div>
       <div class="sidebar-content search-area" style="display:none;">
@@ -1258,12 +1838,23 @@
         <div class="notes-actions"><button class="mini-btn btn-page-note" type="button">页面便签</button><button class="mini-btn btn-highlight" type="button">高亮选中</button></div>
         <input class="note-search-input" type="text" placeholder="搜索批注和笔记...">
         <div class="notes-list"></div>
+      </div>
+      <div class="sidebar-content groups-area" style="display:none;">
+        <div class="groups-list"></div>
       </div>`;
 
     const scroller = document.createElement('div');
     scroller.className = 'pdf-panel';
     body.append(sidebar, scroller);
-    wrapper.append(header, body);
+    const resizerLeft = document.createElement('div');
+    resizerLeft.className = 'panel-resizer panel-resizer-left';
+    resizerLeft.title = '拖拽调整文档宽度';
+
+    const resizerRight = document.createElement('div');
+    resizerRight.className = 'panel-resizer panel-resizer-right';
+    resizerRight.title = '拖拽调整文档宽度';
+
+    wrapper.append(header, body, resizerLeft, resizerRight);
 
     const zoom = clamp(restoredState?.zooms?.[docIndex] || DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM);
     zInput.value = Math.round(zoom * 100);
@@ -1285,6 +1876,11 @@
       zIn,
       zOut,
       close,
+      widthDown,
+      widthUp,
+      resizerLeft,
+      resizerRight,
+      flexWeight: clamp(Number(restoredState?.layout?.docWeights?.[docIndex] ?? restoredState?.docStates?.[docIndex]?.flexWeight ?? 1), 0.35, 4),
       pages: [],
       pageCount: 0,
       rendered: new Map(),
@@ -1320,6 +1916,12 @@
     updateHistoryButtons();
 
     if (isRestore) {
+      if (saved.layout) {
+        app.singleDocWidth = clamp(Number(saved.layout.singleDocWidth || 92), 45, 100);
+        app.singleDocAlign = ['flex-start','center','flex-end'].includes(saved.layout.singleDocAlign) ? saved.layout.singleDocAlign : 'center';
+        if (els.singleWidthInput) els.singleWidthInput.value = Math.round(app.singleDocWidth);
+        if (els.singleAlignSelect) els.singleAlignSelect.value = app.singleDocAlign;
+      }
       app.anchors = Array.isArray(saved.anchors) ? saved.anchors : [new Array(app.files.length).fill(0)];
       app.notes = sanitizeNotes(saved.notes || saved.annotations || []);
       app.syncEnabled = saved.syncEnabled !== false;
@@ -1344,6 +1946,7 @@
         await createPagePlaceholders(doc);
       } catch (err) {
         console.error(err);
+        doc.wrapper.classList.remove('loading');
         doc.scroller.innerHTML = `<div style="padding:20px;color:var(--danger)">加载失败：${escapeHtml(err.message || err)}</div>`;
       }
     }
@@ -1387,8 +1990,6 @@
       doc.pages.push({ el: pageEl, ratio: defaultRatio, cssWidth: 0, cssHeight: 0, loaded: false, rendering: false, token: 0, task: null, detailsTimer: 0 });
     }
 
-    // 关键：先读取每一页的真实宽高比，再开始同步滚动。
-    // 否则页面进入视口时才修正高度，会导致目标文档在翻页边界处跳动、露出空白、错位。
     for (let i = 0; i < doc.pageCount; i++) {
       try {
         const page = await doc.pdf.getPage(i + 1);
@@ -1398,10 +1999,100 @@
         pageState.ratio = ratio;
         pageState.el.dataset.ratio = String(ratio);
       } catch (_) {
-        // 单页尺寸读取失败时继续使用第一页比例。
       }
       if (i % 12 === 0) await waitFrame();
     }
+  }
+
+  function updatePanelResizerVisibility() {
+    app.docs.forEach((doc, index) => {
+      if (doc.resizerLeft) {
+        doc.resizerLeft.style.display = app.docs.length === 1 || index > 0 ? 'block' : 'none';
+        doc.resizerLeft.title = app.docs.length === 1
+          ? '拖拽左边框调整单文档宽度'
+          : '拖拽调整当前文档与左侧文档占比';
+      }
+
+      if (doc.resizerRight) {
+        doc.resizerRight.style.display = app.docs.length === 1 || index < app.docs.length - 1 ? 'block' : 'none';
+        doc.resizerRight.title = app.docs.length === 1
+          ? '拖拽右边框调整单文档宽度'
+          : '拖拽调整当前文档与右侧文档占比';
+      }
+    });
+  }
+
+  function startPanelResize(doc, event, side = 'right') {
+    if (!doc || !doc.wrapper) return;
+    event.preventDefault();
+    event.stopPropagation();
+
+    const index = app.docs.indexOf(doc);
+    const containerRect = els.container.getBoundingClientRect();
+    const startX = event.clientX;
+    const startSingleWidth = app.singleDocWidth;
+    const startWeights = app.docs.map(d => d.flexWeight || 1);
+    const totalWeight = startWeights.reduce((sum, w) => sum + w, 0) || 1;
+
+    let leftIndex = index;
+    let rightIndex = index + 1;
+
+    if (side === 'left') {
+      leftIndex = index - 1;
+      rightIndex = index;
+    }
+
+    if (app.docs.length > 1) {
+      if (rightIndex >= app.docs.length) {
+        leftIndex = index - 1;
+        rightIndex = index;
+      }
+      if (leftIndex < 0) {
+        leftIndex = index;
+        rightIndex = index + 1;
+      }
+    }
+
+    const activeHandle = side === 'left' ? doc.resizerLeft : doc.resizerRight;
+    activeHandle?.classList.add('dragging');
+    document.body.classList.add('resizing-layout');
+
+    const onMove = e => {
+      const dx = e.clientX - startX;
+
+      if (app.docs.length === 1) {
+        const pctDelta = dx / Math.max(1, containerRect.width) * 100;
+        const signedDelta = side === 'left' ? -pctDelta : pctDelta;
+        app.singleDocWidth = clamp(startSingleWidth + signedDelta, 35, 100);
+        if (els.singleWidthInput) els.singleWidthInput.value = Math.round(app.singleDocWidth);
+      } else if (leftIndex >= 0 && rightIndex < app.docs.length) {
+        const pxPerWeight = containerRect.width / totalWeight;
+        const rawDelta = dx / Math.max(80, pxPerWeight);
+
+        const leftStart = startWeights[leftIndex] || 1;
+        const rightStart = startWeights[rightIndex] || 1;
+        const pairTotal = leftStart + rightStart;
+        const leftNext = clamp(leftStart + rawDelta, 0.35, pairTotal - 0.35);
+        const rightNext = clamp(pairTotal - leftNext, 0.35, pairTotal - 0.35);
+        app.docs[leftIndex].flexWeight = leftNext;
+        app.docs[rightIndex].flexWeight = rightNext;
+      }
+
+      applyAllPanelWidths();
+      scheduleRenderAll();
+    };
+
+    const onUp = () => {
+      activeHandle?.classList.remove('dragging');
+      document.body.classList.remove('resizing-layout');
+      document.removeEventListener('pointermove', onMove, true);
+      document.removeEventListener('pointerup', onUp, true);
+      scheduleWorkspaceSave();
+      schedulePersistentFullSave({ silent: true });
+    };
+
+    document.addEventListener('pointermove', onMove, true);
+    document.addEventListener('pointerup', onUp, true);
   }
 
   function attachDocEvents(doc) {
@@ -1435,6 +2126,8 @@
     const tocArea = doc.sidebar.querySelector('.toc-area');
     const searchArea = doc.sidebar.querySelector('.search-area');
     const notesArea = doc.sidebar.querySelector('.notes-area');
+    const groupsArea = doc.sidebar.querySelector('.groups-area');
+    
     tabs.forEach(tab => {
       tab.onclick = () => {
         tabs.forEach(t => t.classList.remove('active'));
@@ -1443,8 +2136,11 @@
         tocArea.style.display = target === 'toc' ? 'block' : 'none';
         searchArea.style.display = target === 'search' ? 'block' : 'none';
         notesArea.style.display = target === 'notes' ? 'block' : 'none';
+        if (groupsArea) groupsArea.style.display = target === 'groups' ? 'block' : 'none';
+
         if (target === 'search') doc.sidebar.querySelector('.search-input').focus();
         if (target === 'notes') { renderNotesList(doc); doc.sidebar.querySelector('.note-search-input').focus(); }
+        if (target === 'groups') { renderGroupsList(doc); }
       };
     });
 
@@ -1465,6 +2161,11 @@
     doc.zIn.onclick = () => updateZoom(parseInt(doc.zInput.value, 10) + 10);
     doc.zInput.addEventListener('change', () => updateZoom(doc.zInput.value));
     doc.zInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.currentTarget.blur(); updateZoom(e.currentTarget.value); } });
+
+    doc.widthDown.onclick = () => adjustDocLayout(doc, -0.18);
+    doc.widthUp.onclick = () => adjustDocLayout(doc, 0.18);
+    doc.resizerLeft.addEventListener('pointerdown', e => startPanelResize(doc, e, 'left'));
+    doc.resizerRight.addEventListener('pointerdown', e => startPanelResize(doc, e, 'right'));
 
     doc.pageInput.addEventListener('keydown', e => {
       if (e.key !== 'Enter') return;
@@ -1617,6 +2318,46 @@
     return { index, pct, anchorPx };
   }
 
+
+  function getBoundarySyncState(doc) {
+    if (!doc.pages.length) {
+      return { logicalPage: 0, viewportY: 0, pageIndex: 0, pagePct: 0, edge: 'top' };
+    }
+
+    const centerY = doc.scroller.scrollTop + doc.scroller.clientHeight / 2;
+    const pageIndex = findPageIndexAt(doc, centerY);
+    const pageEl = doc.pages[pageIndex].el;
+    const pagePct = clamp((centerY - pageEl.offsetTop) / Math.max(1, pageEl.offsetHeight), 0, 0.999);
+
+    let logicalPage = pageIndex;
+    let boundaryY = pageEl.offsetTop;
+    let edge = 'top';
+
+    if (pagePct >= BOUNDARY_SYNC_SWITCH_RATIO && pageIndex < doc.pages.length - 1) {
+      logicalPage = pageIndex + 1;
+      boundaryY = doc.pages[logicalPage].el.offsetTop;
+      edge = 'next-top';
+    }
+
+    return {
+      logicalPage,
+      viewportY: boundaryY - doc.scroller.scrollTop,
+      pageIndex,
+      pagePct,
+      edge
+    };
+  }
+
+  function scrollDocToBoundary(doc, logicalPage, viewportY, preferIdleRender = false) {
+    const idx = clamp(logicalPage, 0, Math.max(0, doc.pages.length - 1));
+    const el = doc.pages[idx]?.el;
+    if (!el) return;
+    doc.scroller.scrollTop = Math.max(0, el.offsetTop - viewportY);
+    updateIndicator(doc);
+    scheduleRenderAround(doc, preferIdleRender);
+    scheduleWorkspaceSave();
+  }
+
   function restorePanelScrollState(doc, state) {
     if (!doc || !state) return;
     const idx = clamp(state.index || 0, 0, Math.max(0, doc.pages.length - 1));
@@ -1647,27 +2388,80 @@
     scheduleWorkspaceSave();
   }
 
+  function getActiveAnchorForSource(sourceIndex, sourcePage) {
+    const fallback = new Array(app.docs.length).fill(0);
+    if (!app.anchors.length) return fallback;
+
+    let activeAnchor = app.anchors[0] || fallback;
+    for (let i = 0; i < app.anchors.length; i++) {
+      const anchor = app.anchors[i];
+      const anchorPage = anchor[sourceIndex] || 0;
+      if (anchorPage <= sourcePage) activeAnchor = anchor;
+      else break;
+    }
+    return activeAnchor;
+  }
+
+  function mapPageWithAnchor(activeAnchor, sourceIndex, targetIndex, sourcePage) {
+    const sourceBase = activeAnchor[sourceIndex] || 0;
+    const targetBase = activeAnchor[targetIndex] || 0;
+    return targetBase + (sourcePage - sourceBase);
+  }
+
+  function mapPageByAnchors(sourceIndex, targetIndex, sourcePage) {
+    const activeAnchor = getActiveAnchorForSource(sourceIndex, sourcePage);
+    return mapPageWithAnchor(activeAnchor, sourceIndex, targetIndex, sourcePage);
+  }
+
   function performSync(sourceDoc) {
     const sourceIndex = app.docs.indexOf(sourceDoc);
-    if (sourceIndex < 0) return;
-    const sourceState = getSyncAnchorState(sourceDoc);
-    const sourcePage = sourceState.index;
-    const pct = sourceState.pct;
+    if (sourceIndex < 0 || !sourceDoc.pages.length) return;
 
-    let activeAnchor = app.anchors[0] || new Array(app.docs.length).fill(0);
-    for (let i = app.anchors.length - 1; i >= 0; i--) {
-      const a = app.anchors[i];
-      if ((a[sourceIndex] || 0) <= sourcePage) { activeAnchor = a; break; }
-    }
+    const centerY = sourceDoc.scroller.scrollTop + sourceDoc.scroller.clientHeight / 2;
+    const sourcePage = findPageIndexAt(sourceDoc, centerY);
+    const sourceEl = sourceDoc.pages[sourcePage]?.el;
+    if (!sourceEl) return;
+
+    const pagePct = clamp((centerY - sourceEl.offsetTop) / Math.max(1, sourceEl.offsetHeight), 0, 0.999);
+    const sourceTopViewportY = sourceEl.offsetTop - sourceDoc.scroller.scrollTop;
+
+    const hasNext = sourcePage < sourceDoc.pages.length - 1;
+    const nextSourcePage = hasNext ? sourcePage + 1 : sourcePage;
+    const sourceNextEl = sourceDoc.pages[nextSourcePage]?.el || sourceEl;
+    const sourceNextViewportY = sourceNextEl.offsetTop - sourceDoc.scroller.scrollTop;
+    const blend = hasNext ? smoothstep(BOUNDARY_BLEND_START, BOUNDARY_BLEND_END, pagePct) : 0;
+
+    const activeAnchor = getActiveAnchorForSource(sourceIndex, sourcePage);
 
     app.syncing = true;
     app.docs.forEach((doc, targetIndex) => {
-      if (doc === sourceDoc) return;
-      const sourceBase = activeAnchor[sourceIndex] || 0;
-      const targetBase = activeAnchor[targetIndex] || 0;
-      const targetPage = targetBase + (sourcePage - sourceBase);
-      scrollDocToAnchor(doc, targetPage, pct, sourceDoc.scrollFast);
+      if (doc === sourceDoc || !doc.pages.length) return;
+
+      const targetTopPage = clamp(
+        mapPageWithAnchor(activeAnchor, sourceIndex, targetIndex, sourcePage),
+        0,
+        doc.pages.length - 1
+      );
+      const targetTopEl = doc.pages[targetTopPage]?.el;
+      if (!targetTopEl) return;
+
+      const targetNextPage = clamp(
+        mapPageWithAnchor(activeAnchor, sourceIndex, targetIndex, nextSourcePage),
+        0,
+        doc.pages.length - 1
+      );
+      const targetNextEl = doc.pages[targetNextPage]?.el || targetTopEl;
+
+      const topAlignedScroll = targetTopEl.offsetTop - sourceTopViewportY;
+      const nextAlignedScroll = targetNextEl.offsetTop - sourceNextViewportY;
+      const blendedScroll = topAlignedScroll * (1 - blend) + nextAlignedScroll * blend;
+
+      doc.scroller.scrollTop = Math.max(0, blendedScroll);
+      updateIndicator(doc);
+      scheduleRenderAround(doc, sourceDoc.scrollFast);
+      scheduleWorkspaceSave();
     });
+
     requestAnimationFrame(() => { app.syncing = false; });
   }
 
@@ -1725,8 +2519,54 @@
     }
   }
 
+  function applyDocumentLayout() {
+    if (!app.docs.length) return;
+    updatePanelResizerVisibility();
+    if (app.docs.length === 1) {
+      els.container.style.justifyContent = app.singleDocAlign || 'center';
+      const doc = app.docs[0];
+      doc.wrapper.style.flex = `0 0 ${app.singleDocWidth}%`;
+      doc.wrapper.style.maxWidth = `${app.singleDocWidth}%`;
+      doc.wrapper.style.minWidth = '280px';
+    } else {
+      els.container.style.justifyContent = 'stretch';
+      app.docs.forEach(doc => {
+        doc.wrapper.style.flex = `${clamp(doc.flexWeight || 1, 0.45, 3)} 1 0`;
+        doc.wrapper.style.maxWidth = '';
+        doc.wrapper.style.minWidth = '240px';
+      });
+    }
+  }
+
   function applyAllPanelWidths() {
+    applyDocumentLayout();
     app.docs.forEach(applyPanelWidth);
+  }
+
+  function adjustDocLayout(doc, delta) {
+    if (!doc) return;
+    if (app.docs.length === 1) {
+      app.singleDocWidth = clamp(app.singleDocWidth + delta * 100, 45, 100);
+      if (els.singleWidthInput) els.singleWidthInput.value = Math.round(app.singleDocWidth);
+    } else {
+      doc.flexWeight = clamp((doc.flexWeight || 1) + delta, 0.45, 3);
+    }
+    applyAllPanelWidths();
+    scheduleRenderAll();
+    scheduleWorkspaceSave();
+    schedulePersistentFullSave({ silent: true });
+  }
+
+  function resetLayout() {
+    app.singleDocWidth = 92;
+    app.singleDocAlign = 'center';
+    if (els.singleWidthInput) els.singleWidthInput.value = '92';
+    if (els.singleAlignSelect) els.singleAlignSelect.value = 'center';
+    app.docs.forEach(doc => { doc.flexWeight = 1; });
+    applyAllPanelWidths();
+    scheduleRenderAll();
+    scheduleWorkspaceSave();
+    schedulePersistentFullSave({ silent: true });
   }
 
   function scheduleZoomRerender(doc) {
@@ -1906,8 +2746,10 @@
         pageState.cssHeight = cssHeight;
         pageState.el.replaceChildren(content);
         pageState.loaded = true;
+        doc.wrapper.classList.remove('loading');
         doc.rendered.set(index, { lastUsed: performance.now() });
         renderStoredNotesForPage(doc, index);
+        renderSearchHitForPage(doc, index);
         scheduleDetailsLayer(doc, index, page, pageState, viewport, scale, token);
       } catch (err) {
         const cancelled = err?.name === 'RenderingCancelledException' || /cancel/i.test(String(err?.message || err));
@@ -1942,14 +2784,15 @@
           textLayer.remove();
           return;
         }
+        const textDivs = [];
         await pdfjsLib.renderTextLayer({
           textContentSource: textContent,
           container: textLayer,
           viewport,
-          textDivs: []
+          textDivs
         }).promise;
+        pageState.textDivs = textDivs;
       } catch (_) {
-        // 文本层失败不影响图像阅读。
       }
 
       if (doc.destroyed || token !== pageState.token || !pageState.loaded || !isRenderStillRelevant(doc, index)) return;
@@ -1960,6 +2803,7 @@
         if (!content) return;
         addAnnotationLinks(doc, content, annotations, viewport);
         renderStoredNotesForPage(doc, index);
+        renderSearchHitForPage(doc, index);
       } catch (err) {
         console.warn('annotation render failed', err);
       }
@@ -2057,6 +2901,7 @@
 
     const frag = document.createDocumentFragment();
     let count = 0;
+    const lowerQ = q.toLowerCase();
     const safeQ = escapeRegExp(q);
     const re = new RegExp(safeQ, 'ig');
 
@@ -2064,35 +2909,49 @@
       for (let i = 1; i <= doc.pageCount; i++) {
         if (token !== doc.searchToken) return;
         const page = await doc.pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 1 });
         const text = await page.getTextContent();
-        const pageText = text.items.map(item => item.str || '').join(' ');
-        const match = pageText.toLowerCase().indexOf(q.toLowerCase());
-        if (match !== -1) {
+        const items = text.items || [];
+        const pageText = items.map(item => item.str || '').join(' ');
+        const lowerText = pageText.toLowerCase();
+
+        let match = lowerText.indexOf(lowerQ);
+        while (match !== -1) {
           count++;
-          const start = Math.max(0, match - 24);
-          const end = Math.min(pageText.length, match + q.length + 36);
-          const snippet = pageText.slice(start, end);
+          const matchInfo = findSearchMatchInfo(items, match, q.length, viewport);
+          const snippetStart = Math.max(0, match - 24);
+          const snippetEnd = Math.min(pageText.length, match + q.length + 42);
+          const snippet = pageText.slice(snippetStart, snippetEnd);
           const div = document.createElement('div');
           div.className = 'search-result-item';
-          div.innerHTML = `<span style="color:var(--text-muted);font-size:10px;">P.${i}</span>: ...${escapeHtml(snippet).replace(re, m => `<b>${escapeHtml(m)}</b>`)}...`;
+          div.dataset.page = String(i);
+          div.dataset.match = String(count);
+          div.innerHTML = `<span style="color:var(--text-muted);font-size:10px;">P.${i} · #${count}</span>: ...${escapeHtml(snippet).replace(re, m => `<b>${escapeHtml(m)}</b>`)}...`;
           div.onclick = () => {
             saveNavState();
-            scrollDocToPage(doc, i - 1, 0, true);
+            scrollDocToSearchMatch(doc, i - 1, matchInfo, true);
+            toast('已定位到该处匹配内容。', 1200);
           };
           frag.appendChild(div);
+
+          match = lowerText.indexOf(lowerQ, match + Math.max(1, lowerQ.length));
+          if (count > 1000) break;
         }
+
         if (i % 8 === 0) {
           resultsEl.innerHTML = `<div style="padding:5px;color:var(--text-muted);">已搜索 ${i}/${doc.pageCount} 页，找到 ${count} 条...</div>`;
           await waitFrame();
         }
+        if (count > 1000) break;
       }
+
       resultsEl.innerHTML = '';
       if (!count) {
         resultsEl.innerHTML = '<div style="padding:10px;color:var(--text-muted);">未找到匹配项</div>';
       } else {
         const head = document.createElement('div');
         head.style.cssText = 'padding:5px;font-weight:bold;border-bottom:1px solid var(--border);margin-bottom:5px;';
-        head.textContent = `共 ${count} 条结果`;
+        head.textContent = count > 1000 ? '结果超过 1000 条，已截断显示' : `共 ${count} 条结果`;
         resultsEl.append(head, frag);
       }
     } catch (err) {
@@ -2101,37 +2960,255 @@
     }
   }
 
+  function getNoteSortPosition(note) {
+    if (!note) return { page: 0, y: 0, x: 0 };
+    const rects = Array.isArray(note.rects) ? note.rects.filter(r => Number.isFinite(r.pageIndex)) : [];
+    const samePage = rects.filter(r => r.pageIndex === note.pageIndex);
+    const pool = samePage.length ? samePage : rects;
+    if (!pool.length) return { page: note.pageIndex || 0, y: 0, x: 0 };
+    const first = pool.slice().sort((a, b) => (a.pageIndex - b.pageIndex) || (a.y - b.y) || (a.x - b.x))[0];
+    return { page: first.pageIndex, y: first.y || 0, x: first.x || 0 };
+  }
 
-  function openNoteEditor({ title = '编辑笔记', hint = '', text = '', allowDelete = false } = {}) {
+  function compareNotesByArticleOrder(a, b) {
+    const pa = getNoteSortPosition(a);
+    const pb = getNoteSortPosition(b);
+    return (pa.page - pb.page) || (pa.y - pb.y) || (pa.x - pb.x) || ((a.createdAt || 0) - (b.createdAt || 0));
+  }
+
+  function describeNotePosition(note) {
+    const pos = getNoteSortPosition(note);
+    const pct = Math.round((pos.y || 0) * 100);
+    return `P.${(note.pageIndex || pos.page || 0) + 1}${note.type === 'highlight' ? ` · 页内约 ${pct}%` : ''}`;
+  }
+
+  function getNoteRawPreview(note) {
+    const noteText = String(note?.note || '').trim();
+    const srcText = String(note?.text || '').trim();
+    if (noteText && srcText) return { primary: noteText, secondary: srcText };
+    if (noteText) return { primary: noteText, secondary: '' };
+    if (srcText) return { primary: srcText, secondary: '' };
+    return { primary: '', secondary: '' };
+  }
+
+
+  function clampModalToViewport(modal) {
+    const rect = modal.getBoundingClientRect();
+    const margin = 10;
+    const left = clamp(rect.left, margin, Math.max(margin, window.innerWidth - Math.min(rect.width, window.innerWidth - margin)));
+    const top = clamp(rect.top, margin, Math.max(margin, window.innerHeight - Math.min(rect.height, window.innerHeight - margin)));
+    modal.style.left = `${left}px`;
+    modal.style.top = `${top}px`;
+    modal.style.right = 'auto';
+    modal.style.bottom = 'auto';
+  }
+
+  function positionNoteEditor(anchorDoc = getActiveDoc()) {
+    const modal = document.querySelector('.note-modal');
+    if (!modal) return;
+
+    const width = Math.min(Math.max(modal.offsetWidth || 560, 360), window.innerWidth - 24);
+    const height = Math.min(Math.max(modal.offsetHeight || 520, 280), window.innerHeight - 24);
+    modal.style.width = `${width}px`;
+    modal.style.height = `${height}px`;
+
+    let left = 24;
+    let top = 78;
+    const docBox = anchorDoc?.wrapper?.getBoundingClientRect?.();
+    if (docBox) {
+      top = clamp(docBox.top + 16, 68, window.innerHeight - height - 12);
+      if (docBox.left + docBox.width / 2 > window.innerWidth / 2) {
+        left = 18;
+      } else {
+        left = window.innerWidth - width - 18;
+      }
+    }
+    modal.style.left = `${clamp(left, 10, Math.max(10, window.innerWidth - width - 10))}px`;
+    modal.style.top = `${clamp(top, 10, Math.max(10, window.innerHeight - height - 10))}px`;
+    modal.style.right = 'auto';
+    modal.style.bottom = 'auto';
+  }
+
+  function initNoteModalDrag() {
+    const modal = document.querySelector('.note-modal');
+    const header = modal?.querySelector('.note-modal-header');
+    if (!modal || !header || modal.dataset.dragReady === '1') return;
+    modal.dataset.dragReady = '1';
+
+    header.addEventListener('pointerdown', e => {
+      if (e.target.closest('button')) return;
+      e.preventDefault();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const rect = modal.getBoundingClientRect();
+      const startLeft = rect.left;
+      const startTop = rect.top;
+
+      const onMove = ev => {
+        modal.style.left = `${startLeft + ev.clientX - startX}px`;
+        modal.style.top = `${startTop + ev.clientY - startY}px`;
+        modal.style.right = 'auto';
+        modal.style.bottom = 'auto';
+      };
+
+      const onUp = () => {
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+        clampModalToViewport(modal);
+      };
+
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+    });
+  }
+
+  function resetNoteModalSplitIfNeeded() {
+    if (!els.noteModalText || !els.noteModalPreview) return;
+    if (!els.noteModalText.style.flexBasis && !els.noteModalPreview.style.flexBasis) {
+      els.noteModalText.style.flex = '1 1 54%';
+      els.noteModalPreview.style.flex = '1 1 46%';
+    }
+  }
+
+  function initNoteModalSplit() {
+    const splitter = document.getElementById('noteModalSplit');
+    if (!splitter || splitter.dataset.splitReady === '1') return;
+    splitter.dataset.splitReady = '1';
+
+    splitter.addEventListener('pointerdown', e => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      const textEl = els.noteModalText;
+      const previewEl = els.noteModalPreview;
+      if (!textEl || !previewEl) return;
+
+      const startY = e.clientY;
+      const startText = textEl.getBoundingClientRect().height;
+      const startPreview = previewEl.getBoundingClientRect().height;
+      const total = Math.max(180, startText + startPreview);
+      const minText = 72;
+      const minPreview = 64;
+
+      splitter.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+
+      const onMove = ev => {
+        const dy = ev.clientY - startY;
+        const nextText = clamp(startText + dy, minText, Math.max(minText, total - minPreview));
+        const nextPreview = Math.max(minPreview, total - nextText);
+
+        textEl.style.flex = `0 0 ${nextText}px`;
+        previewEl.style.flex = `1 1 ${nextPreview}px`;
+      };
+
+      const onUp = () => {
+        splitter.classList.remove('dragging');
+        document.body.style.userSelect = '';
+        document.removeEventListener('pointermove', onMove, true);
+        document.removeEventListener('pointerup', onUp, true);
+      };
+
+      document.addEventListener('pointermove', onMove, true);
+      document.addEventListener('pointerup', onUp, true);
+    });
+  }
+
+  function openNoteEditor({ title = '编辑笔记', hint = '', text = '', allowDelete = false, anchorDoc = null, initialGroups = [], currentNoteId = null } = {}) {
     return new Promise(resolve => {
       els.noteModalTitle.textContent = title;
       els.noteModalHint.textContent = hint;
       els.noteModalText.value = text || '';
+      
+      let currentGroups = [...initialGroups];
+      const groupInput = document.getElementById('noteGroupInput');
+      const groupTags = document.getElementById('noteGroupTags');
+      const groupRelations = document.getElementById('noteGroupRelations');
+      const datalist = document.getElementById('existingGroupsList');
+      
+      datalist.innerHTML = getAllExistingGroups().map(g => `<option value="${escapeHtml(g)}">`).join('');
+
+      const renderGroups = () => {
+        groupTags.innerHTML = currentGroups.map(g => 
+          `<span class="group-tag">${escapeHtml(g)} <span class="remove-tag" data-group="${escapeHtml(g)}">×</span></span>`
+        ).join('');
+        
+        if (currentGroups.length > 0 && currentNoteId) {
+            const related = app.notes.filter(n => n.id !== currentNoteId && n.groups?.some(g => currentGroups.includes(g)));
+            if (related.length > 0) {
+                groupRelations.innerHTML = `<strong>同组的其他批注：</strong><br>` + related.map(n => 
+                    `<a class="relation-link" data-id="${n.id}">P.${n.pageIndex + 1} - ${escapeHtml(shortText(n.note || n.text, 15))}</a>`
+                ).join('');
+            } else {
+                groupRelations.innerHTML = '';
+            }
+        } else {
+            groupRelations.innerHTML = '';
+        }
+      };
+
+      const addGroup = () => {
+        const val = groupInput.value.trim();
+        if (val && !currentGroups.includes(val)) {
+          currentGroups.push(val);
+          renderGroups();
+        }
+        groupInput.value = '';
+      };
+
+      groupInput.onkeydown = e => { if (e.key === 'Enter') { e.preventDefault(); addGroup(); } };
+      document.getElementById('btnAddGroup').onclick = addGroup;
+      
+      groupTags.onclick = e => {
+        if (e.target.classList.contains('remove-tag')) {
+          currentGroups = currentGroups.filter(g => g !== e.target.dataset.group);
+          renderGroups();
+        }
+      };
+
+      groupRelations.onclick = e => {
+          if (e.target.classList.contains('relation-link')) {
+              const targetId = e.target.dataset.id;
+              cleanup({ action: 'jump', targetId: targetId }); 
+          }
+      };
+
+      renderGroups();
+
+      const updatePreview = () => { els.noteModalPreview.innerHTML = safeRenderMarkdown(els.noteModalText.value); };
+      updatePreview();
+      els.noteModalText.addEventListener('input', updatePreview);
       els.noteModalDelete.style.visibility = allowDelete ? 'visible' : 'hidden';
       els.noteModalBackdrop.classList.add('show');
-      setTimeout(() => els.noteModalText.focus(), 30);
+      initNoteModalDrag();
+      initNoteModalSplit();
+      positionNoteEditor(anchorDoc || getActiveDoc());
+      resetNoteModalSplitIfNeeded();
+      setTimeout(() => {
+        els.noteModalText.focus();
+      }, 30);
 
       const cleanup = result => {
+        els.noteModalText.removeEventListener('input', updatePreview);
         els.noteModalBackdrop.classList.remove('show');
         els.noteModalSave.onclick = null;
         els.noteModalCancel.onclick = null;
         els.noteModalClose.onclick = null;
         els.noteModalDelete.onclick = null;
-        els.noteModalBackdrop.onmousedown = null;
         document.removeEventListener('keydown', onKey, true);
         resolve(result);
       };
+      
       const onKey = e => {
         if (!els.noteModalBackdrop.classList.contains('show')) return;
         if (e.key === 'Escape') { e.preventDefault(); cleanup({ action: 'cancel' }); }
-        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); cleanup({ action: 'save', text: els.noteModalText.value }); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); cleanup({ action: 'save', text: els.noteModalText.value, groups: currentGroups }); }
       };
       document.addEventListener('keydown', onKey, true);
-      els.noteModalSave.onclick = () => cleanup({ action: 'save', text: els.noteModalText.value });
+      els.noteModalSave.onclick = () => cleanup({ action: 'save', text: els.noteModalText.value, groups: currentGroups });
       els.noteModalCancel.onclick = () => cleanup({ action: 'cancel' });
       els.noteModalClose.onclick = () => cleanup({ action: 'cancel' });
       els.noteModalDelete.onclick = () => cleanup({ action: 'delete' });
-      els.noteModalBackdrop.onmousedown = e => { if (e.target === els.noteModalBackdrop) cleanup({ action: 'cancel' }); };
     });
   }
 
@@ -2162,6 +3239,7 @@
         if (doc.pages[i]?.loaded) renderStoredNotesForPage(doc, i);
       }
       renderNotesList(doc);
+      renderGroupsList(doc);
     });
   }
 
@@ -2176,70 +3254,256 @@
     tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === 'notes'));
     doc.sidebar.querySelector('.toc-area').style.display = 'none';
     doc.sidebar.querySelector('.search-area').style.display = 'none';
+    doc.sidebar.querySelector('.groups-area').style.display = 'none';
     doc.sidebar.querySelector('.notes-area').style.display = 'block';
     renderNotesList(doc);
     doc.sidebar.querySelector('.note-search-input')?.focus();
+  }
+
+
+  function isNotesTabVisible(doc) {
+    if (!doc?.sidebar) return false;
+    if (doc.sidebar.style.display !== 'flex') return false;
+    const notesArea = doc.sidebar.querySelector('.notes-area');
+    const activeTab = doc.sidebar.querySelector('.sidebar-tab.active');
+    return !!notesArea && notesArea.style.display !== 'none' && activeTab?.dataset?.tab === 'notes';
+  }
+
+  function revealNoteInSidebar(doc, noteId, { flash = true } = {}) {
+    if (!doc?.sidebar || !noteId || !isNotesTabVisible(doc)) return false;
+
+    renderNotesList(doc);
+
+    const list = doc.sidebar.querySelector('.notes-list');
+    let item = list?.querySelector(`[data-note-id="${CSS.escape(noteId)}"]`);
+
+    if (!item) {
+      const input = doc.sidebar.querySelector('.note-search-input');
+      if (input?.value) {
+        input.value = '';
+        renderNotesList(doc);
+        item = doc.sidebar.querySelector('.notes-list')?.querySelector(`[data-note-id="${CSS.escape(noteId)}"]`);
+      }
+    }
+
+    if (!item) return false;
+
+    doc.sidebar.querySelectorAll('.note-item.active-note').forEach(el => el.classList.remove('active-note'));
+    item.classList.add('active-note');
+    item.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'nearest' });
+
+    if (flash) {
+      clearTimeout(item._activeTimer);
+      item._activeTimer = setTimeout(() => item.classList.remove('active-note'), 2600);
+    }
+
+    return true;
   }
 
   function renderNotesList(doc) {
     if (!doc?.sidebar) return;
     const list = doc.sidebar.querySelector('.notes-list');
     if (!list) return;
+
     const q = (doc.sidebar.querySelector('.note-search-input')?.value || '').trim().toLowerCase();
     const notes = getDocNotes(doc).filter(n => {
       if (!q) return true;
-      return [n.note, n.text, String(n.pageIndex + 1), n.type === 'highlight' ? '高亮' : '便签'].join(' ').toLowerCase().includes(q);
-    }).sort((a, b) => (a.pageIndex - b.pageIndex) || (a.createdAt - b.createdAt));
+      return [
+        n.note, n.text, String(n.pageIndex + 1),
+        n.type === 'highlight' ? '高亮' : '便签'
+      ].join(' ').toLowerCase().includes(q);
+    }).sort(compareNotesByArticleOrder);
+
     list.innerHTML = '';
     if (!notes.length) {
-      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);line-height:1.6;">暂无批注。可先选中文本点击“文本高亮”，或给当前页添加“页面便签”。</div>`;
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);line-height:1.6;">暂无批注。可先选中文本点击“标记”，或给当前页添加页面便签。</div>`;
       return;
     }
+
     const frag = document.createDocumentFragment();
+
     for (const note of notes) {
       const item = document.createElement('div');
       item.className = 'note-item';
+      item.dataset.noteId = note.id;
+
       const type = note.type === 'highlight' ? '高亮' : '便签';
-      const body = note.note || note.text || '(无内容)';
-      const colorDot = note.type === 'highlight' ? `<i class="note-color-dot" style="background:${HIGHLIGHT_DOT_COLORS[normalizeHighlightColor(note.color)]}"></i>` : '';
+      const colorDot = note.type === 'highlight'
+        ? `<i class="note-color-dot" style="background:${HIGHLIGHT_DOT_COLORS[normalizeHighlightColor(note.color)]}"></i>`
+        : '';
+
+      const preview = getNoteRawPreview(note);
+      const mainText = preview.primary || preview.secondary || '';
+      const secondaryText = preview.primary && preview.secondary ? preview.secondary : '';
+      const title = note.type === 'highlight'
+        ? shortText(note.text || note.note || '高亮批注', 90)
+        : shortText(note.note || '页面便签', 90);
+
       item.innerHTML = `
-        <div class="note-meta"><span class="note-type">${colorDot}${type}</span><span>P.${note.pageIndex + 1}</span></div>
-        <div class="note-title">${escapeHtml(shortText(note.text || note.note || type, 80))}</div>
-        <div class="note-body">${escapeHtml(shortText(body, 160))}</div>
+        <div class="note-meta">
+          <span class="note-type">${colorDot}${type}</span>
+          <span>${escapeHtml(describeNotePosition(note))}</span>
+        </div>
+        <div class="note-title">${escapeHtml(title)}</div>
+        <div class="note-body markdown-body">${mainText ? safeRenderMarkdown(mainText) : escapeHtml('（空批注）')}</div>
+        ${secondaryText ? `<div class="note-quote">${escapeHtml(shortText(secondaryText, 160))}</div>` : ''}
         <div class="note-actions-row"><button data-action="jump">跳转</button><button data-action="edit">编辑</button><button data-action="delete">删除</button></div>`;
+
       item.onclick = e => {
         const action = e.target?.dataset?.action || 'jump';
         e.stopPropagation();
+
         if (action === 'delete') {
           if (confirm('删除这条批注吗？')) deleteNote(note.id);
           return;
         }
+
         if (action === 'edit') {
           editExistingNote(note.id);
           return;
         }
+
         saveNavState();
-        scrollDocToPage(doc, note.pageIndex, 0, true);
+
+        if (note.type === 'highlight' && note.rects?.length) {
+          const firstRect = note.rects.find(r => r.pageIndex === note.pageIndex) || note.rects[0];
+          const el = doc.pages[firstRect.pageIndex]?.el;
+          if (el) {
+            const yInPage = (firstRect.y + firstRect.h / 2) * el.offsetHeight;
+            const targetY = el.offsetTop + yInPage - doc.scroller.clientHeight / 2;
+            doc.scroller.scrollTo({ top: Math.max(0, targetY), behavior: 'smooth' });
+            updateIndicator(doc);
+            scheduleRenderAround(doc);
+            scheduleWorkspaceSave();
+            setTimeout(() => performSync(doc), 120);
+          }
+        } else {
+          scrollDocToPage(doc, note.pageIndex, 0, true);
+        }
       };
+
       frag.appendChild(item);
     }
+
     list.appendChild(frag);
+  }
+
+  function renderGroupsList(doc) {
+    if (!doc?.sidebar) return;
+    const list = doc.sidebar.querySelector('.groups-list');
+    if (!list) return;
+
+    const notes = getDocNotes(doc);
+    const groupsMap = {};
+    const unGrouped = [];
+
+    notes.forEach(n => {
+      if (!n.groups || n.groups.length === 0) {
+        unGrouped.push(n);
+      } else {
+        n.groups.forEach(g => {
+          if (!groupsMap[g]) groupsMap[g] = [];
+          groupsMap[g].push(n);
+        });
+      }
+    });
+
+    const groupNames = Object.keys(groupsMap).sort();
+
+    if (groupNames.length === 0) {
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);line-height:1.6;">暂无分组。在编辑批注时添加组名即可创建组。</div>`;
+      return;
+    }
+
+    let html = '';
+    groupNames.forEach(g => {
+        html += `
+        <div class="group-folder open">
+            <div class="group-folder-header">
+                <span>📁 ${escapeHtml(g)}</span>
+                <span style="color:var(--text-muted);">${groupsMap[g].length} 篇</span>
+            </div>
+            <div class="group-folder-content">
+                ${groupsMap[g].sort(compareNotesByArticleOrder).map(n => `
+                    <div class="group-item-mini" data-id="${n.id}">
+                        <span class="note-chip-group">P.${n.pageIndex + 1}</span>
+                        ${escapeHtml(shortText(n.note || n.text, 25))}
+                    </div>
+                `).join('')}
+            </div>
+        </div>`;
+    });
+
+    list.innerHTML = html;
+
+    list.querySelectorAll('.group-folder-header').forEach(header => {
+        header.onclick = () => header.parentElement.classList.toggle('open');
+    });
+
+    list.querySelectorAll('.group-item-mini').forEach(item => {
+        item.onclick = (e) => {
+            const noteId = e.currentTarget.dataset.id;
+            const note = app.notes.find(n => n.id === noteId);
+            if(note) {
+                saveNavState();
+                if (note.type === 'highlight' && note.rects?.length) {
+                  const firstRect = note.rects.find(r => r.pageIndex === note.pageIndex) || note.rects[0];
+                  const el = doc.pages[firstRect.pageIndex]?.el;
+                  if (el) {
+                    doc.scroller.scrollTo({
+                      top: Math.max(0, el.offsetTop + (firstRect.y + firstRect.h / 2) * el.offsetHeight - doc.scroller.clientHeight / 2),
+                      behavior: 'smooth'
+                    });
+                    scheduleRenderAround(doc);
+                  }
+                } else {
+                  scrollDocToPage(doc, note.pageIndex, 0, false);
+                }
+                editExistingNote(note.id);
+            }
+        };
+    });
   }
 
   async function editExistingNote(noteId) {
     const note = app.notes.find(n => n.id === noteId);
     if (!note) return;
+    const doc = app.docs.find(d => noteMatchesDoc(note, d));
+    if (doc) {
+      app.userActiveDocId = doc.id;
+      if (note.type === 'highlight' && note.rects?.length) {
+        const firstRect = note.rects.find(r => r.pageIndex === note.pageIndex) || note.rects[0];
+        const el = doc.pages[firstRect.pageIndex]?.el;
+        if (el) {
+          doc.scroller.scrollTo({
+            top: Math.max(0, el.offsetTop + (firstRect.y + firstRect.h / 2) * el.offsetHeight - doc.scroller.clientHeight / 2),
+            behavior: 'smooth'
+          });
+          scheduleRenderAround(doc);
+        }
+      } else {
+        scrollDocToPage(doc, note.pageIndex, 0, false);
+      }
+    }
     const result = await openNoteEditor({
       title: note.type === 'highlight' ? '编辑高亮笔记' : '编辑页面便签',
       hint: `${note.docName || '当前文档'} · 第 ${note.pageIndex + 1} 页${note.text ? ` · 原文：${shortText(note.text, 90)}` : ''}`,
       text: note.note || '',
-      allowDelete: true
+      allowDelete: true,
+      anchorDoc: doc || getActiveDoc(),
+      initialGroups: note.groups || [],
+      currentNoteId: note.id
     });
+    
+    if (result.action === 'jump') {
+        editExistingNote(result.targetId);
+        return;
+    }
     if (result.action === 'delete') {
       deleteNote(note.id);
       toast('批注已删除。');
     } else if (result.action === 'save') {
-      upsertNote({ ...note, note: result.text.trim() });
+      upsertNote({ ...note, note: result.text.trim(), groups: result.groups || [] });
       toast('批注已保存。');
     }
   }
@@ -2254,8 +3518,16 @@
       title: existing ? '编辑页面便签' : '添加页面便签',
       hint: `${doc.file.name} · 第 ${pageIndex + 1} 页`,
       text: existing?.note || '',
-      allowDelete: !!existing
+      allowDelete: !!existing,
+      anchorDoc: doc,
+      initialGroups: existing?.groups || [],
+      currentNoteId: existing?.id
     });
+    
+    if (result.action === 'jump') {
+        editExistingNote(result.targetId);
+        return;
+    }
     if (result.action === 'delete' && existing) {
       deleteNote(existing.id);
       toast('页面便签已删除。');
@@ -2274,6 +3546,7 @@
       pageIndex,
       text: '',
       note: noteText,
+      groups: result.groups || [],
       rects: [],
       createdAt: existing?.createdAt || Date.now()
     });
@@ -2282,6 +3555,85 @@
 
   function rectIntersectsPage(rect, pageBox) {
     return rect.right > pageBox.left && rect.left < pageBox.right && rect.bottom > pageBox.top && rect.top < pageBox.bottom;
+  }
+
+  function normalizeHighlightRects(rects) {
+    if (!Array.isArray(rects) || !rects.length) return [];
+
+    const byPage = new Map();
+    for (const r of rects) {
+      if (!r || r.w <= 0 || r.h <= 0) continue;
+      const pageIndex = Math.max(0, Number(r.pageIndex || 0));
+      if (!byPage.has(pageIndex)) byPage.set(pageIndex, []);
+      byPage.get(pageIndex).push({
+        pageIndex,
+        x: clamp(Number(r.x || 0), 0, 1),
+        y: clamp(Number(r.y || 0), 0, 1),
+        w: clamp(Number(r.w || 0), 0, 1),
+        h: clamp(Number(r.h || 0), 0, 1)
+      });
+    }
+
+    const output = [];
+    for (const [pageIndex, list] of byPage) {
+      list.sort((a, b) => (a.y - b.y) || (a.x - b.x));
+      const lines = [];
+
+      for (const r of list) {
+        const cy = r.y + r.h / 2;
+        const line = lines.find(line => Math.abs(line.cy - cy) < Math.max(line.h, r.h) * 0.62);
+        if (line) {
+          line.rects.push(r);
+          const total = line.rects.length;
+          line.cy = (line.cy * (total - 1) + cy) / total;
+          line.h = Math.max(line.h, r.h);
+        } else {
+          lines.push({ cy, h: r.h, rects: [r] });
+        }
+      }
+
+      for (const line of lines) {
+        const segments = line.rects
+          .map(r => ({
+            x1: r.x,
+            x2: Math.min(1, r.x + r.w),
+            y1: r.y,
+            y2: Math.min(1, r.y + r.h)
+          }))
+          .sort((a, b) => a.x1 - b.x1);
+
+        const merged = [];
+        for (const seg of segments) {
+          const last = merged[merged.length - 1];
+          if (
+            last &&
+            seg.x1 <= last.x2 + 0.006 &&
+            Math.max(0, Math.min(last.y2, seg.y2) - Math.max(last.y1, seg.y1)) >=
+              Math.min(last.y2 - last.y1, seg.y2 - seg.y1) * 0.35
+          ) {
+            last.x2 = Math.max(last.x2, seg.x2);
+            last.y1 = Math.min(last.y1, seg.y1);
+            last.y2 = Math.max(last.y2, seg.y2);
+          } else {
+            merged.push({ ...seg });
+          }
+        }
+
+        for (const m of merged) {
+          const y1 = clamp(m.y1 + 0.003, 0, 1);
+          const y2 = clamp(m.y2 - 0.001, 0, 1);
+          output.push({
+            pageIndex,
+            x: clamp(m.x1, 0, 1),
+            y: y1,
+            w: clamp(m.x2 - m.x1, 0, 1),
+            h: clamp(Math.max(0.008, y2 - y1), 0.006, 1)
+          });
+        }
+      }
+    }
+
+    return output.sort((a, b) => (a.pageIndex - b.pageIndex) || (a.y - b.y) || (a.x - b.x));
   }
 
   async function addHighlightFromSelection(preferredDoc = getActiveDoc()) {
@@ -2294,8 +3646,6 @@
       return;
     }
 
-    // Do not trust the last active panel blindly: toolbar clicks may happen after selecting text
-    // in another panel, and the selection object may not update activeDoc.
     let doc = preferredDoc && preferredDoc.wrapper.contains(range.commonAncestorContainer)
       ? preferredDoc
       : findDocForSelection(range);
@@ -2321,17 +3671,21 @@
       }
     }
 
-    if (!rects.length) {
+    const normalizedRects = normalizeHighlightRects(rects);
+    if (!normalizedRects.length) {
       toast('没有取得有效的文本位置；请确认页面文字层已加载后再选中。', 2600);
       return;
     }
 
-    const firstPage = rects.reduce((min, r) => Math.min(min, r.pageIndex), rects[0].pageIndex);
+    const firstPage = normalizedRects.reduce((min, r) => Math.min(min, r.pageIndex), normalizedRects[0].pageIndex);
     const result = await openNoteEditor({
       title: '添加文本高亮',
       hint: `${doc.file.name} · 第 ${firstPage + 1} 页 · 原文：${shortText(selectedText, 120)}`,
       text: '',
-      allowDelete: false
+      allowDelete: false,
+      anchorDoc: doc,
+      initialGroups: [],
+      currentNoteId: null
     });
 
     if (result.action !== 'save') return;
@@ -2346,7 +3700,8 @@
       text: selectedText,
       note: result.text.trim(),
       color: app.highlightColor,
-      rects,
+      rects: normalizedRects,
+      groups: result.groups || [],
       createdAt: Date.now()
     });
 
@@ -2357,12 +3712,18 @@
   function renderStoredNotesForPage(doc, pageIndex) {
     const pageState = doc.pages[pageIndex];
     if (!pageState?.el || !pageState.loaded) return;
+
+    const content = pageState.el.querySelector('.page-content') || pageState.el;
     pageState.el.querySelectorAll('.note-highlight-layer,.page-note-marker').forEach(el => el.remove());
+    content.querySelectorAll?.('.note-highlight-layer')?.forEach(el => el.remove());
+
     const pageNotes = getDocNotes(doc).filter(n => n.pageIndex === pageIndex || n.rects?.some(r => r.pageIndex === pageIndex));
     if (!pageNotes.length) return;
+
     const layer = document.createElement('div');
     layer.className = 'note-highlight-layer';
     let hasHighlight = false;
+
     for (const note of pageNotes) {
       if (note.type !== 'highlight') continue;
       for (const r of note.rects.filter(x => x.pageIndex === pageIndex)) {
@@ -2374,12 +3735,19 @@
         div.style.top = `${r.y * 100}%`;
         div.style.width = `${r.w * 100}%`;
         div.style.height = `${r.h * 100}%`;
-        div.onclick = e => { e.preventDefault(); e.stopPropagation(); editExistingNote(note.id); };
+        div.onclick = e => {
+          e.preventDefault();
+          e.stopPropagation();
+          revealNoteInSidebar(doc, note.id);
+          editExistingNote(note.id);
+        };
         layer.appendChild(div);
         hasHighlight = true;
       }
     }
-    if (hasHighlight) pageState.el.appendChild(layer);
+
+    if (hasHighlight) content.appendChild(layer);
+
     const pageNote = pageNotes.find(n => n.type === 'page-note' && n.pageIndex === pageIndex);
     if (pageNote) {
       const marker = document.createElement('button');
@@ -2387,11 +3755,15 @@
       marker.className = 'page-note-marker';
       marker.textContent = '笔记';
       marker.title = pageNote.note || '页面便签';
-      marker.onclick = e => { e.preventDefault(); e.stopPropagation(); editExistingNote(pageNote.id); };
+      marker.onclick = e => {
+        e.preventDefault();
+        e.stopPropagation();
+        revealNoteInSidebar(doc, pageNote.id);
+        editExistingNote(pageNote.id);
+      };
       pageState.el.appendChild(marker);
     }
   }
-
 
   function saveNavState() {
     if (!app.docs.length || app.suppressHistory) return;
@@ -2432,6 +3804,7 @@
     updateHistoryButtons();
     updateMemoryStats();
     if (removeStorage) localStorage.removeItem(WORKSPACE_KEY);
+    els.container.style.justifyContent = '';
     showEmptyState();
   }
 
@@ -2492,7 +3865,6 @@
     if (e.key === 'Escape') closeToolbarMenus();
   }, true);
 
-  // Extra delegated close handler: capture-phase, independent of document order.
   els.container.addEventListener('click', async e => {
     const closeButton = e.target.closest?.('.btn-close');
     if (!closeButton) return;
@@ -2502,6 +3874,43 @@
     const doc = app.docs.find(d => d.wrapper === wrapper);
     if (doc) await removeDocumentByDoc(doc, { confirmClose: false });
   }, true);
+
+  function getNearestDocFromPoint(x) {
+    if (!app.docs.length) return null;
+    let best = null;
+    let bestDist = Infinity;
+    for (const doc of app.docs) {
+      const box = doc.wrapper.getBoundingClientRect();
+      if (x >= box.left && x <= box.right) return doc;
+      const dist = Math.min(Math.abs(x - box.left), Math.abs(x - box.right));
+      if (dist < bestDist) {
+        bestDist = dist;
+        best = doc;
+      }
+    }
+    return best || getActiveDoc();
+  }
+
+  els.container.addEventListener('wheel', e => {
+    if (!app.docs.length) return;
+
+    if (e.target.closest?.('.pdf-panel,.panel-sidebar,.sidebar-content,.toolbar,.toolbar-popover,.note-modal,input,textarea,select,button')) {
+      return;
+    }
+
+    const wrapper = e.target.closest?.('.panel-wrapper');
+    const doc = wrapper
+      ? app.docs.find(d => d.wrapper === wrapper)
+      : getNearestDocFromPoint(e.clientX);
+
+    if (!doc || !doc.scroller) return;
+    e.preventDefault();
+    app.userActiveDocId = doc.id;
+
+    const unit = e.deltaMode === 1 ? 36 : e.deltaMode === 2 ? doc.scroller.clientHeight : 1;
+    doc.scroller.scrollTop += e.deltaY * unit;
+    doc.scroller.scrollLeft += e.deltaX * unit;
+  }, { passive: false });
 
   // Global controls
   els.btnAddFile.onclick = () => els.fileInput.click();
@@ -2554,6 +3963,14 @@
   els.btnGlobalZoomIn.onclick = () => applyGlobalZoom(parseInt(els.globalZoomInput.value, 10) + 10);
   els.globalZoomInput.addEventListener('change', () => applyGlobalZoom(els.globalZoomInput.value));
   els.globalZoomInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.currentTarget.blur(); applyGlobalZoom(e.currentTarget.value); } });
+
+  els.btnSingleWidthDown.onclick = () => { app.singleDocWidth = clamp(app.singleDocWidth - 5, 45, 100); els.singleWidthInput.value = Math.round(app.singleDocWidth); applyAllPanelWidths(); scheduleRenderAll(); scheduleWorkspaceSave(); };
+  els.btnSingleWidthUp.onclick = () => { app.singleDocWidth = clamp(app.singleDocWidth + 5, 45, 100); els.singleWidthInput.value = Math.round(app.singleDocWidth); applyAllPanelWidths(); scheduleRenderAll(); scheduleWorkspaceSave(); };
+  els.singleWidthInput.addEventListener('change', () => { app.singleDocWidth = clamp(parseInt(els.singleWidthInput.value, 10) || 92, 45, 100); els.singleWidthInput.value = Math.round(app.singleDocWidth); applyAllPanelWidths(); scheduleRenderAll(); scheduleWorkspaceSave(); });
+  els.singleWidthInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.currentTarget.blur(); } });
+  els.singleAlignSelect.onchange = e => { app.singleDocAlign = e.target.value; applyAllPanelWidths(); scheduleWorkspaceSave(); };
+  els.btnResetLayout.onclick = resetLayout;
+
   els.themeSelect.onchange = e => { document.body.className = `theme-${e.target.value}`; scheduleWorkspaceSave(); };
 
   document.addEventListener('keydown', e => {
