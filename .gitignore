@@ -1,0 +1,7 @@
+.idea/
+*.readerproj
+*.pdf
+*.zip
+*.tmp
+.DS_Store
+Thumbs.db

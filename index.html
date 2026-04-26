@@ -1,0 +1,2429 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parallel Reader - 极简项目批注版</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf_viewer.min.css">
+<style>
+  :root { color-scheme: light; }
+
+  body.theme-normal {
+    --bg-main:#f5f7fb; --bg-toolbar:rgba(255,255,255,.92); --bg-header:#ffffff; --surface:#ffffff; --surface-2:#f8fafc;
+    --text-main:#111827; --text-muted:#64748b; --border:#e5e7eb; --border-soft:#eef2f7;
+    --btn-hover:#f1f5f9; --input-bg:#ffffff; --page-bg:#ffffff; --shadow:0 18px 45px rgba(15,23,42,.08);
+    --sidebar-bg:#fbfdff; --sidebar-hover:#eef6ff; --accent:#2563eb; --accent-soft:#e8f0ff; --danger:#dc2626; --danger-soft:#fff1f2;
+    --selection:rgba(37,99,235,.18); --page-filter:none; --page-blend:normal; --focus:0 0 0 3px rgba(37,99,235,.16);
+  }
+  body.theme-dark {
+    color-scheme: dark;
+    --bg-main:#101318; --bg-toolbar:rgba(18,22,28,.92); --bg-header:#161b22; --surface:#161b22; --surface-2:#111720;
+    --text-main:#e5e7eb; --text-muted:#94a3b8; --border:#263241; --border-soft:#1f2937;
+    --btn-hover:#202a36; --input-bg:#0d1117; --page-bg:#1c212b; --shadow:0 20px 50px rgba(0,0,0,.38);
+    --sidebar-bg:#131922; --sidebar-hover:#1f2937; --accent:#60a5fa; --accent-soft:#14243b; --danger:#f87171; --danger-soft:#351a1f;
+    --selection:rgba(96,165,250,.24); --page-filter:invert(.86) hue-rotate(180deg) contrast(1.06); --page-blend:normal; --focus:0 0 0 3px rgba(96,165,250,.20);
+  }
+  body.theme-green {
+    --bg-main:#eef7ef; --bg-toolbar:rgba(248,253,249,.92); --bg-header:#f9fffa; --surface:#fbfffc; --surface-2:#f0f8f1;
+    --text-main:#1f3d27; --text-muted:#5f7f67; --border:#d6e8d9; --border-soft:#e6f2e8;
+    --btn-hover:#e6f3e8; --input-bg:#ffffff; --page-bg:#edf8ee; --shadow:0 18px 45px rgba(31,61,39,.10);
+    --sidebar-bg:#f4fbf5; --sidebar-hover:#e4f2e6; --accent:#2f7d4f; --accent-soft:#e7f4ec; --danger:#c2410c; --danger-soft:#fff4ed;
+    --selection:rgba(47,125,79,.18); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(47,125,79,.18);
+  }
+  body.theme-sepia {
+    --bg-main:#f7f0e2; --bg-toolbar:rgba(255,250,240,.92); --bg-header:#fff8ec; --surface:#fffaf0; --surface-2:#fbf1df;
+    --text-main:#473829; --text-muted:#8a735a; --border:#eadcc4; --border-soft:#f2e8d7;
+    --btn-hover:#f4e8d2; --input-bg:#fffaf0; --page-bg:#fff6e6; --shadow:0 18px 45px rgba(71,56,41,.10);
+    --sidebar-bg:#fff8ec; --sidebar-hover:#f3e4ca; --accent:#9a6a2f; --accent-soft:#f3e7d5; --danger:#b45309; --danger-soft:#fff7ed;
+    --selection:rgba(154,106,47,.20); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(154,106,47,.18);
+  }
+  body.theme-gray {
+    --bg-main:#f1f3f5; --bg-toolbar:rgba(255,255,255,.90); --bg-header:#ffffff; --surface:#ffffff; --surface-2:#f6f7f8;
+    --text-main:#22272e; --text-muted:#6b7280; --border:#d7dce2; --border-soft:#e7eaee;
+    --btn-hover:#eef0f2; --input-bg:#ffffff; --page-bg:#f7f7f7; --shadow:0 18px 45px rgba(0,0,0,.08);
+    --sidebar-bg:#fafafa; --sidebar-hover:#eceff2; --accent:#475569; --accent-soft:#edf0f4; --danger:#dc2626; --danger-soft:#fff1f2;
+    --selection:rgba(71,85,105,.20); --page-filter:none; --page-blend:multiply; --focus:0 0 0 3px rgba(71,85,105,.16);
+  }
+
+  * { box-sizing:border-box; }
+  body {
+    margin:0; height:100vh; overflow:hidden; display:flex; flex-direction:column;
+    font-family:Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, "Microsoft YaHei", sans-serif;
+    background:linear-gradient(180deg, var(--surface-2) 0%, var(--bg-main) 44%, var(--bg-main) 100%);
+    color:var(--text-main); transition:background .18s,color .18s;
+    -webkit-font-smoothing:antialiased; text-rendering:geometricPrecision;
+  }
+  button, select, input { font:inherit; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline:none; box-shadow:var(--focus); }
+
+  .toolbar {
+    min-height:56px; padding:10px 14px; display:flex; align-items:center; flex-wrap:wrap; gap:10px;
+    background:var(--bg-toolbar); border-bottom:1px solid var(--border); z-index:100; backdrop-filter:saturate(180%) blur(16px);
+  }
+  .brand { display:flex; flex-direction:column; gap:1px; padding:0 6px 0 2px; min-width:128px; }
+  .brand-title { font-size:14px; font-weight:760; letter-spacing:-.02em; line-height:1.1; }
+  .brand-subtitle { font-size:11px; color:var(--text-muted); line-height:1.2; }
+  .toolbar-group { display:flex; align-items:center; gap:6px; padding:4px; border:1px solid var(--border-soft); border-radius:999px; background:rgba(255,255,255,.42); }
+  .project-status { font-size:12px; color:var(--text-muted); padding:0 6px; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .toggle-label { display:flex; align-items:center; gap:4px; font-size:12px; color:var(--text-muted); padding:0 4px; user-select:none; white-space:nowrap; }
+  .toggle-label input { accent-color:var(--accent); }
+  body.theme-dark .toolbar-group { background:rgba(255,255,255,.03); }
+  .toolbar button, .toolbar select, .mini-btn {
+    height:30px; padding:0 11px; border-radius:999px; border:1px solid transparent; background:transparent; color:var(--text-main);
+    font-size:12px; cursor:pointer; transition:background .14s,border-color .14s,box-shadow .14s,transform .12s,opacity .14s; white-space:nowrap;
+  }
+  .toolbar button:hover:not(:disabled), .toolbar select:hover, .mini-btn:hover:not(:disabled) { background:var(--btn-hover); border-color:var(--border); }
+  .toolbar button.icon-btn { width:30px; min-width:30px; padding:0; display:inline-grid; place-items:center; font-size:14px; font-weight:760; line-height:1; }
+  .quick-nav { gap:3px; }
+  .quick-nav .icon-btn[disabled] { opacity:.32; }
+  .toolbar-menu { position:relative; }
+  .toolbar-menu summary { list-style:none; height:30px; padding:0 12px; border-radius:999px; border:1px solid transparent; display:flex; align-items:center; gap:6px; cursor:pointer; font-size:12px; user-select:none; white-space:nowrap; }
+  .toolbar-menu summary::-webkit-details-marker { display:none; }
+  .toolbar-menu summary::after { content:"⌄"; font-size:11px; color:var(--text-muted); transform:translateY(-1px); }
+  .toolbar-menu[open] summary, .toolbar-menu summary:hover { background:var(--btn-hover); border-color:var(--border); }
+  .toolbar-popover { position:absolute; top:calc(100% + 8px); left:0; min-width:230px; padding:10px; border:1px solid var(--border); border-radius:16px; background:var(--surface); box-shadow:0 22px 60px rgba(15,23,42,.18); display:flex; flex-direction:column; gap:8px; z-index:500; }
+  body.theme-dark .toolbar-popover { box-shadow:0 24px 70px rgba(0,0,0,.46); }
+  .toolbar-popover.right { left:auto; right:0; }
+  .toolbar-popover .menu-row { display:flex; align-items:center; gap:6px; flex-wrap:wrap; }
+  .toolbar-popover button, .toolbar-popover select { border-color:var(--border); background:transparent; }
+  .toolbar-popover .menu-label { font-size:11px; color:var(--text-muted); padding:0 4px; }
+  .color-palette { display:flex; align-items:center; gap:5px; padding:2px 3px; border-radius:999px; border:1px solid var(--border-soft); background:var(--surface); }
+  .color-swatch { width:22px!important; height:22px!important; min-width:22px!important; padding:0!important; border-radius:999px!important; border:1px solid rgba(15,23,42,.14)!important; box-shadow:inset 0 0 0 2px rgba(255,255,255,.58); }
+  .color-swatch.active { outline:2px solid var(--accent); outline-offset:2px; }
+  .color-swatch[data-color="yellow"] { background:#fde047!important; }
+  .color-swatch[data-color="green"] { background:#86efac!important; }
+  .color-swatch[data-color="blue"] { background:#93c5fd!important; }
+  .color-swatch[data-color="pink"] { background:#f9a8d4!important; }
+  .color-swatch[data-color="purple"] { background:#c4b5fd!important; }
+  .compact-label { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text-muted); white-space:nowrap; }
+  .toolbar button:active:not(:disabled), .mini-btn:active:not(:disabled) { transform:translateY(1px); }
+  .toolbar button:disabled, .mini-btn:disabled { opacity:.36; cursor:not-allowed; }
+  .btn-primary { background:var(--accent)!important; border-color:var(--accent)!important; color:#fff!important; font-weight:700; box-shadow:0 8px 22px rgba(37,99,235,.20); }
+  body.theme-dark .btn-primary { color:#07111f!important; box-shadow:0 10px 28px rgba(96,165,250,.18); }
+  .btn-active { background:var(--accent-soft)!important; border-color:var(--accent)!important; color:var(--accent)!important; font-weight:700; }
+  .btn-danger:hover { background:var(--danger-soft)!important; border-color:var(--danger)!important; color:var(--danger)!important; }
+  .divider { width:1px; height:22px; background:var(--border); margin:0 2px; flex:0 0 auto; opacity:.8; }
+  #fileListHint, #memoryHint, #memoryStats { color:var(--text-muted); font-size:12px; max-width:300px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  #memoryHint { color:var(--accent); display:none; }
+  #memoryStats { margin-left:auto; padding:0 4px; }
+  .zoom-group { display:flex; align-items:center; gap:2px; border:1px solid var(--border); border-radius:999px; padding:2px 3px; background:var(--surface); }
+  .zoom-group .mini-btn { height:24px; min-width:24px; padding:0 7px; }
+  .data-input {
+    width:42px; height:24px; padding:0 3px; border:0; border-radius:999px; background:transparent; color:var(--text-main);
+    text-align:center; font-size:12px; font-weight:720;
+  }
+  input[type="number"]::-webkit-outer-spin-button, input[type="number"]::-webkit-inner-spin-button { -webkit-appearance:none; margin:0; }
+  input[type="number"] { -moz-appearance:textfield; }
+
+  #viewer-container { flex:1; display:flex; min-height:0; width:100%; overflow:hidden; gap:12px; padding:12px; background:transparent; }
+  .empty-state {
+    margin:auto; width:min(520px, calc(100% - 32px)); padding:38px 36px; color:var(--text-muted); text-align:center; line-height:1.8; font-size:14px;
+    border:1px solid var(--border); border-radius:24px; background:var(--surface); box-shadow:var(--shadow);
+  }
+  .empty-state .empty-mark { width:54px; height:54px; margin:0 auto 14px; border-radius:18px; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent); font-weight:800; font-size:22px; }
+  .empty-state .empty-title { margin-bottom:6px; color:var(--text-main); font-size:18px; font-weight:780; letter-spacing:-.02em; }
+  .empty-state .empty-desc { font-size:13px; }
+
+  .panel-wrapper {
+    flex:1 1 0; min-width:280px; display:flex; flex-direction:column; overflow:hidden; background:var(--surface);
+    border:1px solid var(--border); border-radius:18px; box-shadow:var(--shadow);
+  }
+  .panel-wrapper:last-child { border-right:1px solid var(--border); }
+  .panel-header {
+    min-height:44px; padding:7px 9px; display:flex; align-items:center; justify-content:space-between; gap:8px;
+    background:var(--bg-header); border-bottom:1px solid var(--border-soft); z-index:50;
+  }
+  .header-left { display:flex; align-items:center; gap:7px; flex:1 1 auto; min-width:0; }
+  .drag-handle { cursor:grab; color:var(--text-muted); padding:0 6px; user-select:none; font-size:15px; border-radius:999px; }
+  .drag-handle:hover { background:var(--btn-hover); color:var(--text-main); }
+  .drag-handle:active { cursor:grabbing; color:var(--accent); }
+  .panel-title { font-size:12.5px; font-weight:760; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; letter-spacing:-.01em; }
+  .panel-controls { display:flex; align-items:center; gap:4px; color:var(--text-muted); flex:0 0 auto; }
+  .panel-controls .divider { height:18px; margin:0 3px; }
+  .mini-btn { height:26px; padding:0 9px; font-size:11.5px; border:1px solid var(--border); background:var(--surface); }
+  .mini-btn.active { background:var(--accent-soft); border-color:var(--accent); color:var(--accent); font-weight:700; }
+  .btn-close { width:26px; height:26px; border:none; border-radius:999px; background:transparent; color:var(--text-muted); font-size:16px; cursor:pointer; padding:0; display:grid; place-items:center; }
+  .btn-close:hover { color:var(--danger); background:var(--danger-soft); }
+
+  .panel-body { flex:1; min-height:0; display:flex; overflow:hidden; background:var(--surface-2); }
+  .panel-sidebar {
+    width:250px; flex:0 0 250px; display:none; flex-direction:column; overflow:hidden; background:var(--sidebar-bg); border-right:1px solid var(--border-soft); font-size:12px;
+  }
+  .sidebar-tabs { display:flex; gap:4px; padding:8px; border-bottom:1px solid var(--border-soft); flex:0 0 auto; }
+  .sidebar-tab { flex:1; height:30px; padding:0 8px; color:var(--text-muted); background:transparent; border:1px solid transparent; border-radius:999px; cursor:pointer; font-size:12px; }
+  .sidebar-tab:hover { background:var(--btn-hover); }
+  .sidebar-tab.active { color:var(--accent); font-weight:760; border-color:var(--accent); background:var(--accent-soft); }
+  .sidebar-content { flex:1; min-height:0; overflow:auto; padding:10px; scrollbar-gutter:stable; }
+  ul.toc-list { list-style:none; margin:0; padding-left:10px; }
+  ul.toc-list > li { margin:3px 0; }
+  .toc-link { display:block; padding:6px 8px; color:var(--text-main); text-decoration:none; border-radius:10px; line-height:1.36; cursor:pointer; }
+  .toc-link:hover { background:var(--sidebar-hover); color:var(--accent); }
+  .search-box { display:flex; gap:6px; margin-bottom:10px; }
+  .search-input { min-width:0; flex:1; height:34px; padding:0 11px; border:1px solid var(--border); border-radius:12px; outline:none; background:var(--input-bg); color:var(--text-main); font-size:12px; }
+  .search-input:focus { border-color:var(--accent); box-shadow:var(--focus); }
+  .search-result-item { padding:9px 8px; border:1px solid transparent; border-bottom-color:var(--border-soft); border-radius:12px; cursor:pointer; line-height:1.45; word-break:break-word; }
+  .search-result-item:hover { background:var(--sidebar-hover); border-color:var(--border-soft); }
+  .search-result-item b { color:var(--accent); }
+
+  .pdf-panel { flex:1; min-width:0; overflow:auto; padding:24px 0; position:relative; scroll-behavior:auto; background:linear-gradient(180deg,var(--surface-2),var(--bg-main)); scrollbar-gutter:stable; }
+  .page-wrapper {
+    position:relative; margin:0 auto 18px auto; display:flex; align-items:center; justify-content:center; overflow:hidden;
+    background:var(--page-bg); border:1px solid rgba(148,163,184,.18); border-radius:6px; box-shadow:0 10px 28px rgba(15,23,42,.12); color:var(--text-muted); font-size:12px;
+  }
+  body.theme-dark .page-wrapper { box-shadow:0 16px 32px rgba(0,0,0,.32); border-color:rgba(148,163,184,.12); }
+  .page-placeholder { user-select:none; color:var(--text-muted); opacity:.72; }
+  .page-wrapper canvas { display:block; filter:var(--page-filter); mix-blend-mode:var(--page-blend); }
+  .textLayer { position:absolute; inset:0; overflow:hidden; transform-origin:0 0; }
+  .textLayer ::selection { background:var(--selection)!important; color:transparent!important; }
+  .pdf-link { position:absolute; z-index:20; border-radius:4px; transition:background .12s, box-shadow .12s; }
+  .pdf-link:hover { background:rgba(37,99,235,.14); box-shadow:0 0 0 1px rgba(37,99,235,.26) inset; }
+  .toast {
+    position:fixed; left:50%; bottom:24px; transform:translateX(-50%) translateY(8px); padding:10px 14px; border-radius:999px;
+    background:rgba(15,23,42,.88); color:#fff; font-size:13px; z-index:999; opacity:0; pointer-events:none; transition:opacity .18s, transform .18s; box-shadow:0 16px 40px rgba(0,0,0,.22); backdrop-filter:blur(10px);
+  }
+  .toast.show { opacity:1; transform:translateX(-50%) translateY(0); }
+
+
+  .notes-actions { display:flex; gap:6px; margin-bottom:8px; flex-wrap:wrap; }
+  .notes-actions .mini-btn { height:28px; }
+  .note-search-input { width:100%; height:34px; padding:0 11px; margin-bottom:10px; border:1px solid var(--border); border-radius:12px; outline:none; background:var(--input-bg); color:var(--text-main); font-size:12px; }
+  .note-search-input:focus { border-color:var(--accent); box-shadow:var(--focus); }
+  .notes-list { display:flex; flex-direction:column; gap:8px; }
+  .note-item { padding:9px 9px; border:1px solid var(--border-soft); border-radius:12px; background:var(--surface); cursor:pointer; line-height:1.42; }
+  .note-item:hover { background:var(--sidebar-hover); border-color:var(--border); }
+  .note-meta { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:5px; font-size:11px; color:var(--text-muted); }
+  .note-type { color:var(--accent); font-weight:760; display:inline-flex; align-items:center; gap:5px; }
+  .note-color-dot { width:9px; height:9px; border-radius:999px; display:inline-block; border:1px solid rgba(15,23,42,.16); }
+  .note-title { font-size:12px; color:var(--text-main); font-weight:720; margin-bottom:3px; word-break:break-word; }
+  .note-body { font-size:12px; color:var(--text-muted); word-break:break-word; white-space:pre-wrap; max-height:72px; overflow:hidden; }
+  .note-actions-row { display:flex; gap:6px; margin-top:8px; }
+  .note-actions-row button { height:24px; padding:0 8px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-main); font-size:11px; cursor:pointer; }
+  .note-actions-row button:hover { background:var(--btn-hover); }
+  .page-note-marker { position:absolute; right:10px; top:10px; z-index:18; min-width:26px; height:26px; padding:0 8px; border-radius:999px; border:1px solid rgba(202,138,4,.35); background:rgba(254,243,199,.92); color:#92400e; font-size:12px; font-weight:760; display:flex; align-items:center; justify-content:center; cursor:pointer; box-shadow:0 8px 20px rgba(146,64,14,.16); backdrop-filter:blur(6px); }
+  body.theme-dark .page-note-marker { background:rgba(120,77,20,.86); color:#fde68a; border-color:rgba(253,230,138,.30); }
+  .note-highlight-layer { position:absolute; inset:0; z-index:8; pointer-events:none; }
+  .note-highlight { position:absolute; border-radius:3px; box-shadow:0 0 0 1px rgba(15,23,42,.10) inset; mix-blend-mode:multiply; pointer-events:auto; cursor:pointer; }
+  body.theme-dark .note-highlight { mix-blend-mode:screen; }
+  .note-highlight:hover { outline:2px solid rgba(37,99,235,.38); }
+  .note-modal-backdrop { position:fixed; inset:0; z-index:1200; display:none; align-items:center; justify-content:center; padding:18px; background:rgba(15,23,42,.28); backdrop-filter:blur(8px); }
+  .note-modal-backdrop.show { display:flex; }
+  .note-modal { width:min(520px,100%); border:1px solid var(--border); border-radius:20px; background:var(--surface); box-shadow:0 28px 80px rgba(15,23,42,.28); overflow:hidden; }
+  .note-modal-header { display:flex; align-items:center; justify-content:space-between; padding:14px 16px; border-bottom:1px solid var(--border-soft); }
+  .note-modal-title { font-size:15px; font-weight:780; color:var(--text-main); }
+  .note-modal-close { width:28px; height:28px; border:0; border-radius:999px; background:transparent; color:var(--text-muted); cursor:pointer; font-size:18px; }
+  .note-modal-close:hover { background:var(--btn-hover); color:var(--danger); }
+  .note-modal-body { padding:14px 16px; }
+  .note-modal-hint { margin-bottom:8px; font-size:12px; color:var(--text-muted); line-height:1.45; }
+  .note-modal-text { width:100%; min-height:130px; resize:vertical; padding:11px 12px; border:1px solid var(--border); border-radius:14px; outline:none; background:var(--input-bg); color:var(--text-main); font-size:13px; line-height:1.55; }
+  .note-modal-text:focus { border-color:var(--accent); box-shadow:var(--focus); }
+  .note-modal-footer { display:flex; justify-content:space-between; gap:8px; padding:12px 16px 16px; }
+  .note-modal-footer .left, .note-modal-footer .right { display:flex; gap:8px; }
+  .note-modal-footer button { height:32px; padding:0 13px; border-radius:999px; border:1px solid var(--border); background:transparent; color:var(--text-main); cursor:pointer; font-size:12px; }
+  .note-modal-footer button:hover { background:var(--btn-hover); }
+  .note-modal-footer .primary { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:760; }
+  .note-modal-footer .danger { color:var(--danger); border-color:rgba(220,38,38,.35); }
+  .note-modal-footer .danger:hover { background:var(--danger-soft); border-color:var(--danger); }
+
+  @media (max-width: 900px) {
+    .brand { min-width:100%; flex-direction:row; align-items:baseline; gap:8px; }
+    .toolbar { gap:8px; }
+    .toolbar-group { max-width:100%; }
+    #viewer-container { padding:8px; gap:8px; }
+    .panel-sidebar { width:220px; flex-basis:220px; }
+  }
+</style>
+</head>
+<body class="theme-normal">
+<div class="toolbar">
+  <input type="file" id="fileInput" multiple accept="application/pdf,.pdf" style="display:none">
+  <input type="file" id="projectFileInput" accept=".prproj,.readerproj,.json,application/json" style="display:none">
+  <div class="brand" aria-label="应用名称">
+    <div class="brand-title">Parallel Reader</div>
+    <div class="brand-subtitle">极简同步阅读 · 项目 + 批注</div>
+  </div>
+
+  <div class="toolbar-group">
+    <button id="btnAddFile" class="btn-primary">打开 PDF</button>
+    <button id="btnLoad" class="btn-primary">开始阅读</button>
+    <button id="btnClear" class="btn-danger" title="清空当前工作区">清空</button>
+  </div>
+
+  <span id="fileListHint"></span>
+  <span id="memoryHint"></span>
+
+  <div class="toolbar-group" id="persistGroup">
+    <details class="toolbar-menu">
+      <summary>项目</summary>
+      <div class="toolbar-popover">
+        <span id="projectStatus" class="project-status" title="当前项目保存状态">项目：临时</span>
+        <label class="toggle-label" title="开启后，锚点、缩放和阅读进度会自动保存到当前项目"><input id="chkAutoSave" type="checkbox" checked>自动保存</label>
+        <label class="toggle-label" title="开启后，保存项目文件时会把 PDF 副本也写入项目文件；关闭则只保存文件名、锚点和进度"><input id="chkSavePdfCopy" type="checkbox" checked>保存 PDF</label>
+        <div class="menu-row"><button id="btnSaveProject" title="把当前打开的 PDF、锚点和阅读进度保存到浏览器暂存区">保存暂存</button><button id="btnRestorePersist" title="打开浏览器本地暂存的项目">打开暂存</button></div>
+        <div class="menu-row"><button id="btnExportProject" title="弹出另存为窗口，手动选择 .readerproj 项目文件保存位置；不支持时自动回退为浏览器下载">导出项目</button><button id="btnImportProject" title="从 .prproj / .readerproj 项目文件恢复文档、锚点和阅读进度">导入项目</button></div>
+        <div class="menu-row"><button id="btnTempMode" title="切换为临时阅读，不再自动写入项目数据库">临时模式</button><button id="btnClearPersist" class="btn-danger" title="删除浏览器本地暂存的项目数据">删除项目</button></div>
+      </div>
+    </details>
+  </div>
+
+  <div class="toolbar-group">
+    <button id="btnToggleSync" class="btn-active">同步开启</button>
+    <button id="btnAnchor" title="记录当前各文档页码错位关系">锁定锚点</button>
+  </div>
+
+  <div class="toolbar-group quick-nav" aria-label="视图快捷操作">
+    <button id="btnResetView" class="icon-btn" title="重置缩放和同步锚点，并回到顶部">↺</button>
+    <button id="btnHistoryBack" class="icon-btn" disabled title="后退：Alt + ←">←</button>
+    <button id="btnHistoryForward" class="icon-btn" disabled title="前进：Alt + →">→</button>
+  </div>
+
+  <div class="toolbar-group" title="对当前活跃文档进行批注">
+    <span class="compact-label">高亮</span>
+    <div id="highlightPalette" class="color-palette" role="group" aria-label="高亮颜色">
+      <button class="color-swatch active" data-color="yellow" type="button" title="黄色高亮"></button>
+      <button class="color-swatch" data-color="green" type="button" title="绿色高亮"></button>
+      <button class="color-swatch" data-color="blue" type="button" title="蓝色高亮"></button>
+      <button class="color-swatch" data-color="pink" type="button" title="粉色高亮"></button>
+      <button class="color-swatch" data-color="purple" type="button" title="紫色高亮"></button>
+    </div>
+    <button id="btnHighlight" title="先选中文本，再点击这里添加当前颜色的高亮和笔记">标记</button>
+    <details class="toolbar-menu">
+      <summary>批注</summary>
+      <div class="toolbar-popover">
+        <button id="btnPageNote" title="给当前页添加或编辑页面便签">页面便签</button>
+        <button id="btnShowNotes" title="打开当前文档的批注列表并可搜索笔记">批注列表</button>
+        <div class="menu-label">提示：先选择高亮颜色，再选中文本点击“标记”。</div>
+      </div>
+    </details>
+  </div>
+
+  <details class="toolbar-menu">
+    <summary>视图</summary>
+    <div class="toolbar-popover right">
+      <div class="menu-row">
+        <span class="menu-label">全局缩放</span>
+        <div class="zoom-group" title="全局缩放">
+          <button id="btnGlobalZoomOut" class="mini-btn">−</button>
+          <input id="globalZoomInput" class="data-input" type="number" value="90" min="30" max="300" title="全局缩放，回车生效">
+          <span style="font-size:11px;color:var(--text-muted)">%</span>
+          <button id="btnGlobalZoomIn" class="mini-btn">+</button>
+        </div>
+      </div>
+      <div class="menu-row">
+        <span class="menu-label">主题</span>
+        <select id="themeSelect" title="主题"><option value="normal">清新白</option><option value="dark">深色</option><option value="green">豆沙绿</option><option value="sepia">米色纸</option><option value="gray">柔和灰</option></select>
+      </div>
+    </div>
+  </details>
+
+  <span id="memoryStats" title="当前已保留的渲染页数；性能版默认降低预渲染并延后文本层"></span>
+</div>
+<div id="viewer-container">
+  <div class="empty-state">
+    <div class="empty-mark">PDF</div>
+    <div class="empty-title">选择文档开始阅读</div>
+    <div class="empty-desc">支持 1–4 个 PDF 并排阅读、错位锚点同步、项目文件导入导出、目录检索、页面便签、文本高亮和笔记搜索。</div>
+  </div>
+</div>
+<div id="toast" class="toast"></div>
+<div id="noteModalBackdrop" class="note-modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="noteModalTitle">
+  <div class="note-modal">
+    <div class="note-modal-header">
+      <div id="noteModalTitle" class="note-modal-title">编辑笔记</div>
+      <button id="noteModalClose" class="note-modal-close" type="button" aria-label="关闭">×</button>
+    </div>
+    <div class="note-modal-body">
+      <div id="noteModalHint" class="note-modal-hint"></div>
+      <textarea id="noteModalText" class="note-modal-text" placeholder="输入笔记内容..."></textarea>
+    </div>
+    <div class="note-modal-footer">
+      <div class="left"><button id="noteModalDelete" class="danger" type="button">删除</button></div>
+      <div class="right"><button id="noteModalCancel" type="button">取消</button><button id="noteModalSave" class="primary" type="button">保存</button></div>
+    </div>
+  </div>
+</div>
+<script>
+(() => {
+  'use strict';
+
+  pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+  const MAX_DOCS = 4;
+  const DEFAULT_ZOOM = 0.90;
+  const MIN_ZOOM = 0.30;
+  const MAX_ZOOM = 3.00;
+  const PREFETCH_PAGES = 1;
+  const KEEP_DISTANCE = 3;
+  const MAX_RENDERED_PAGES_PER_DOC = 6;
+  const SCROLL_RENDER_IDLE_FAST_MS = 460;
+  const SCROLL_RENDER_IDLE_NORMAL_MS = 95;
+  const FAST_SCROLL_PX_PER_MS = 1.4;
+  const FAST_SCROLL_VIEWPORT_FACTOR = 0.70;
+  const RENDER_STALE_DISTANCE = 1;
+  const DETAILS_LAYER_IDLE_MS = 420;
+  const WORKSPACE_KEY = 'parallel_pdf_reader_anchor_workspace_v1';
+  const PERSIST_DB_NAME = 'parallel_pdf_reader_persistent_db_v1';
+  const PERSIST_DB_VERSION = 1;
+  const PERSIST_FILES_STORE = 'files';
+  const PERSIST_META_STORE = 'meta';
+  const PERSIST_META_KEY = 'workspace';
+
+  const els = {
+    fileInput: document.getElementById('fileInput'),
+    projectFileInput: document.getElementById('projectFileInput'),
+    btnAddFile: document.getElementById('btnAddFile'),
+    btnClear: document.getElementById('btnClear'),
+    btnLoad: document.getElementById('btnLoad'),
+    btnToggleSync: document.getElementById('btnToggleSync'),
+    btnAnchor: document.getElementById('btnAnchor'),
+    btnPageNote: document.getElementById('btnPageNote'),
+    btnHighlight: document.getElementById('btnHighlight'),
+    btnShowNotes: document.getElementById('btnShowNotes'),
+    btnResetView: document.getElementById('btnResetView'),
+    btnHistoryBack: document.getElementById('btnHistoryBack'),
+    btnHistoryForward: document.getElementById('btnHistoryForward'),
+    btnGlobalZoomOut: document.getElementById('btnGlobalZoomOut'),
+    btnGlobalZoomIn: document.getElementById('btnGlobalZoomIn'),
+    globalZoomInput: document.getElementById('globalZoomInput'),
+    themeSelect: document.getElementById('themeSelect'),
+    fileListHint: document.getElementById('fileListHint'),
+    memoryHint: document.getElementById('memoryHint'),
+    persistGroup: document.getElementById('persistGroup'),
+    projectStatus: document.getElementById('projectStatus'),
+    chkAutoSave: document.getElementById('chkAutoSave'),
+    chkSavePdfCopy: document.getElementById('chkSavePdfCopy'),
+    btnSaveProject: document.getElementById('btnSaveProject'),
+    btnExportProject: document.getElementById('btnExportProject'),
+    btnImportProject: document.getElementById('btnImportProject'),
+    btnRestorePersist: document.getElementById('btnRestorePersist'),
+    btnTempMode: document.getElementById('btnTempMode'),
+    btnClearPersist: document.getElementById('btnClearPersist'),
+    memoryStats: document.getElementById('memoryStats'),
+    container: document.getElementById('viewer-container'),
+    toast: document.getElementById('toast'),
+    noteModalBackdrop: document.getElementById('noteModalBackdrop'),
+    noteModalTitle: document.getElementById('noteModalTitle'),
+    noteModalHint: document.getElementById('noteModalHint'),
+    noteModalText: document.getElementById('noteModalText'),
+    noteModalClose: document.getElementById('noteModalClose'),
+    noteModalSave: document.getElementById('noteModalSave'),
+    noteModalCancel: document.getElementById('noteModalCancel'),
+    noteModalDelete: document.getElementById('noteModalDelete'),
+    highlightColorSwatches: Array.from(document.querySelectorAll('#highlightPalette .color-swatch'))
+  };
+
+  const app = {
+    files: [],
+    docs: [],
+    anchors: [],
+    syncEnabled: true,
+    syncing: false,
+    userActiveDocId: null,
+    suppressHistory: false,
+    saveTimer: 0,
+    persistTimer: 0,
+    historyTimer: 0,
+    navHistory: [],
+    navIndex: -1,
+    resizeTimer: 0,
+    renderSeq: 0,
+    savedWorkspace: null,
+    hasPersistentWorkspace: false,
+    isPersisting: false,
+    projectActive: false,
+    autoSaveProject: true,
+    savePdfCopy: true,
+    highlightColor: 'yellow',
+    notes: []
+  };
+
+  function uid() {
+    return `doc_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>'"]/g, c => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' }[c]));
+  }
+
+  function escapeRegExp(s) {
+    return String(s).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+
+
+
+  function makeNoteId() {
+    return `note_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  }
+
+  const HIGHLIGHT_COLORS = {
+    yellow: 'rgba(253, 224, 71, 0.46)',
+    green: 'rgba(134, 239, 172, 0.42)',
+    blue: 'rgba(147, 197, 253, 0.42)',
+    pink: 'rgba(249, 168, 212, 0.42)',
+    purple: 'rgba(196, 181, 253, 0.42)'
+  };
+
+  const HIGHLIGHT_DOT_COLORS = {
+    yellow: '#fde047', green: '#86efac', blue: '#93c5fd', pink: '#f9a8d4', purple: '#c4b5fd'
+  };
+
+  function normalizeHighlightColor(color) {
+    return Object.hasOwn(HIGHLIGHT_COLORS, color) ? color : 'yellow';
+  }
+
+  function getHighlightColorValue(color) {
+    return HIGHLIGHT_COLORS[normalizeHighlightColor(color)];
+  }
+
+  function setHighlightColor(color) {
+    app.highlightColor = normalizeHighlightColor(color);
+    els.highlightColorSwatches.forEach(btn => btn.classList.toggle('active', btn.dataset.color === app.highlightColor));
+    scheduleWorkspaceSave();
+  }
+
+  function fileKey(file) {
+    if (!file) return '';
+    return `${file.name || ''}::${file.size || 0}::${file.lastModified || 0}`;
+  }
+
+  function docKey(doc) {
+    return fileKey(doc?.file);
+  }
+
+  function sanitizeNotes(notes) {
+    if (!Array.isArray(notes)) return [];
+    return notes
+      .filter(n => n && typeof n === 'object' && (n.type === 'page-note' || n.type === 'highlight'))
+      .map(n => ({
+        id: String(n.id || makeNoteId()),
+        type: n.type,
+        docKey: String(n.docKey || ''),
+        docName: String(n.docName || ''),
+        docSize: Number(n.docSize || 0),
+        docLastModified: Number(n.docLastModified || 0),
+        pageIndex: Math.max(0, Number(n.pageIndex || 0)),
+        text: String(n.text || ''),
+        note: String(n.note || ''),
+        color: normalizeHighlightColor(String(n.color || 'yellow')),
+        rects: Array.isArray(n.rects) ? n.rects.map(r => ({
+          pageIndex: Math.max(0, Number(r.pageIndex || 0)),
+          x: clamp(Number(r.x || 0), 0, 1),
+          y: clamp(Number(r.y || 0), 0, 1),
+          w: clamp(Number(r.w || 0), 0, 1),
+          h: clamp(Number(r.h || 0), 0, 1)
+        })).filter(r => r.w > 0 && r.h > 0) : [],
+        createdAt: Number(n.createdAt || Date.now()),
+        updatedAt: Number(n.updatedAt || n.createdAt || Date.now())
+      }));
+  }
+
+  function noteMatchesDoc(note, doc) {
+    if (!note || !doc?.file) return false;
+    const key = docKey(doc);
+    if (note.docKey && note.docKey === key) return true;
+    if (note.docName === doc.file.name && (!note.docSize || note.docSize === (doc.file.size || 0))) return true;
+    return false;
+  }
+
+  function getDocNotes(doc) {
+    return app.notes.filter(n => noteMatchesDoc(n, doc));
+  }
+
+  function getActiveDoc() {
+    return app.docs.find(d => d.id === app.userActiveDocId) || app.docs[0] || null;
+  }
+
+  function shortText(s, len = 120) {
+    const t = String(s || '').replace(/\s+/g, ' ').trim();
+    return t.length > len ? `${t.slice(0, len)}…` : t;
+  }
+
+  function waitFrame() {
+    return new Promise(resolve => requestAnimationFrame(resolve));
+  }
+
+  function toast(message, ms = 1800) {
+    els.toast.textContent = message;
+    els.toast.classList.add('show');
+    clearTimeout(els.toast._timer);
+    els.toast._timer = setTimeout(() => els.toast.classList.remove('show'), ms);
+  }
+
+
+  function openPersistentDB() {
+    return new Promise((resolve, reject) => {
+      if (!('indexedDB' in window)) {
+        reject(new Error('当前浏览器不支持 IndexedDB，无法保存 PDF 文件。'));
+        return;
+      }
+      let request;
+      try {
+        request = indexedDB.open(PERSIST_DB_NAME, PERSIST_DB_VERSION);
+      } catch (err) {
+        reject(err);
+        return;
+      }
+      request.onupgradeneeded = () => {
+        const db = request.result;
+        if (!db.objectStoreNames.contains(PERSIST_FILES_STORE)) {
+          db.createObjectStore(PERSIST_FILES_STORE, { keyPath: 'id' });
+        }
+        if (!db.objectStoreNames.contains(PERSIST_META_STORE)) {
+          db.createObjectStore(PERSIST_META_STORE, { keyPath: 'key' });
+        }
+      };
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error || new Error('打开本地数据库失败。'));
+      request.onblocked = () => reject(new Error('本地数据库被其它阅读器标签页占用，请关闭旧页面后重试。'));
+    });
+  }
+
+  function transactionDone(tx) {
+    return new Promise((resolve, reject) => {
+      tx.oncomplete = () => resolve();
+      tx.onerror = () => reject(tx.error || new Error('数据库写入失败。'));
+      tx.onabort = () => reject(tx.error || new Error('数据库写入被中断。'));
+    });
+  }
+
+  function requestResult(req) {
+    return new Promise((resolve, reject) => {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error || new Error('数据库读取失败。'));
+    });
+  }
+
+  async function readPersistentMeta() {
+    let db;
+    try {
+      db = await openPersistentDB();
+      const tx = db.transaction(PERSIST_META_STORE, 'readonly');
+      const rec = await requestResult(tx.objectStore(PERSIST_META_STORE).get(PERSIST_META_KEY));
+      return rec?.value || null;
+    } catch (err) {
+      console.warn('读取持久化信息失败:', err);
+      return null;
+    } finally {
+      try { db?.close(); } catch (_) {}
+    }
+  }
+
+  async function readPersistentFiles() {
+    let db;
+    try {
+      db = await openPersistentDB();
+      const tx = db.transaction(PERSIST_FILES_STORE, 'readonly');
+      const records = await requestResult(tx.objectStore(PERSIST_FILES_STORE).getAll());
+      return records.sort((a, b) => (a.order || 0) - (b.order || 0));
+    } finally {
+      try { db?.close(); } catch (_) {}
+    }
+  }
+
+  async function writePersistentMetaOnly(state) {
+    if (!state || !app.projectActive || !app.autoSaveProject) return;
+    let db;
+    try {
+      db = await openPersistentDB();
+      const tx = db.transaction(PERSIST_META_STORE, 'readwrite');
+      tx.objectStore(PERSIST_META_STORE).put({ key: PERSIST_META_KEY, value: { ...state, persistedAt: Date.now() } });
+      await transactionDone(tx);
+    } catch (err) {
+      console.warn('保存阅读状态失败:', err);
+    } finally {
+      try { db?.close(); } catch (_) {}
+    }
+  }
+
+  async function writePersistentWorkspaceFull({ silent = false, saveFiles = app.savePdfCopy } = {}) {
+    const state = getWorkspaceState();
+    if (!state || !app.docs.length || app.isPersisting) return;
+    app.isPersisting = true;
+    updatePersistentButtons();
+    let db;
+    try {
+      db = await openPersistentDB();
+      const tx = db.transaction([PERSIST_FILES_STORE, PERSIST_META_STORE], 'readwrite');
+      const filesStore = tx.objectStore(PERSIST_FILES_STORE);
+      const metaStore = tx.objectStore(PERSIST_META_STORE);
+      filesStore.clear();
+      const fileInfos = app.docs.map((doc, order) => {
+        const id = `pdf_${order}`;
+        const info = { id, order, name: doc.file.name, type: doc.file.type || 'application/pdf', size: doc.file.size || 0, lastModified: doc.file.lastModified || Date.now() };
+        if (saveFiles) filesStore.put({ ...info, blob: doc.file });
+        return info;
+      });
+      metaStore.put({ key: PERSIST_META_KEY, value: { ...state, fileInfos, filesEmbedded: !!saveFiles, persistedAt: Date.now() } });
+      await transactionDone(tx);
+      app.projectActive = true;
+      app.hasPersistentWorkspace = true;
+      updatePersistentButtons();
+      if (!silent) toast(saveFiles ? '项目已保存，PDF 副本也已写入数据库。' : '项目已保存：仅保存锚点、进度和文件信息。');
+    } catch (err) {
+      console.error('持久化保存失败:', err);
+      const msg = /quota/i.test(String(err?.name || err?.message || '')) ? '浏览器存储空间不足，无法保存这些 PDF。' : `持久化保存失败：${err.message || err}`;
+      toast(msg, 3600);
+    } finally {
+      app.isPersisting = false;
+      updatePersistentButtons();
+      try { db?.close(); } catch (_) {}
+    }
+  }
+
+  function schedulePersistentFullSave(options = {}) {
+    if (!app.projectActive || !app.autoSaveProject) return;
+    clearTimeout(app.persistTimer);
+    app.persistTimer = setTimeout(() => writePersistentWorkspaceFull({ silent: true, saveFiles: app.savePdfCopy, ...options }), 900);
+  }
+
+
+  function makeExportFileName() {
+    const first = app.docs[0]?.file?.name || 'parallel-reader';
+    const base = first.replace(/\.[^.]+$/, '').replace(/[\\/:*?"<>|\s]+/g, '_').slice(0, 48) || 'parallel-reader';
+    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+    return `${base}_${date}.readerproj`;
+  }
+
+  function downloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1200);
+  }
+
+  async function saveBlobWithPicker(blob, fileName) {
+    if (typeof window.showSaveFilePicker !== 'function') {
+      downloadBlob(blob, fileName);
+      return { mode: 'download-fallback' };
+    }
+
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: fileName,
+        types: [{
+          description: 'Parallel Reader 项目文件',
+          accept: { 'application/json': ['.readerproj'] }
+        }]
+      });
+      const writable = await handle.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      return { mode: 'picker', name: handle.name || fileName };
+    } catch (err) {
+      if (err && err.name === 'AbortError') return { mode: 'cancelled' };
+      console.warn('系统另存为不可用，回退到浏览器下载:', err);
+      downloadBlob(blob, fileName);
+      return { mode: 'download-fallback', error: err };
+    }
+  }
+
+  function arrayBufferToBase64(buffer) {
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      binary += String.fromCharCode.apply(null, bytes.subarray(i, i + chunkSize));
+    }
+    return btoa(binary);
+  }
+
+  function base64ToUint8Array(base64) {
+    const binary = atob(base64);
+    const chunkSize = 0x8000;
+    const chunks = [];
+    for (let i = 0; i < binary.length; i += chunkSize) {
+      const slice = binary.slice(i, i + chunkSize);
+      const bytes = new Uint8Array(slice.length);
+      for (let j = 0; j < slice.length; j++) bytes[j] = slice.charCodeAt(j);
+      chunks.push(bytes);
+    }
+    const total = chunks.reduce((sum, c) => sum + c.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const c of chunks) {
+      out.set(c, offset);
+      offset += c.length;
+    }
+    return out;
+  }
+
+  async function buildPortableProjectBundle({ includeFiles = app.savePdfCopy } = {}) {
+    const state = getWorkspaceState();
+    if (!state || !app.docs.length) throw new Error('当前没有可导出的项目。');
+    const files = [];
+    for (let i = 0; i < app.docs.length; i++) {
+      const doc = app.docs[i];
+      const entry = {
+        id: `pdf_${i}`,
+        order: i,
+        name: doc.file.name,
+        type: doc.file.type || 'application/pdf',
+        size: doc.file.size || 0,
+        lastModified: doc.file.lastModified || 0
+      };
+      if (includeFiles) {
+        entry.encoding = 'base64';
+        entry.data = arrayBufferToBase64(await doc.file.arrayBuffer());
+      }
+      files.push(entry);
+      if (i % 1 === 0) await waitFrame();
+    }
+    return {
+      format: 'parallel-reader-project',
+      version: 1,
+      app: 'Parallel Reader',
+      exportedAt: new Date().toISOString(),
+      filesEmbedded: !!includeFiles,
+      workspace: {
+        ...state,
+        portable: true,
+        fileInfos: files.map(({ data, ...rest }) => rest),
+        notes: state.notes || [],
+        annotations: state.annotations || []
+      },
+      files
+    };
+  }
+
+  async function exportProjectFile() {
+    if (!app.docs.length) {
+      toast('当前没有可导出的项目。');
+      return;
+    }
+    const includeFiles = !!els.chkSavePdfCopy.checked;
+    const totalBytes = app.docs.reduce((sum, d) => sum + (d.file.size || 0), 0);
+    if (includeFiles && totalBytes > 180 * 1024 * 1024) {
+      const mb = Math.round(totalBytes / 1024 / 1024);
+      if (!confirm(`当前 PDF 总大小约 ${mb} MB。导出自包含项目文件会占用较多内存和磁盘空间，是否继续？`)) return;
+    }
+    app.isPersisting = true;
+    updatePersistentButtons();
+    try {
+      const bundle = await buildPortableProjectBundle({ includeFiles });
+      const blob = new Blob([JSON.stringify(bundle)], { type: 'application/json' });
+      const result = await saveBlobWithPicker(blob, makeExportFileName());
+      if (result.mode === 'cancelled') {
+        toast('已取消导出。', 1800);
+      } else if (result.mode === 'picker') {
+        toast(includeFiles ? '项目文件已保存到指定位置：包含 PDF 副本。' : '项目文件已保存到指定位置：仅包含锚点、进度和文件信息。', 3000);
+      } else {
+        toast(includeFiles ? '当前浏览器不支持另存为，已改用下载：包含 PDF 副本。' : '当前浏览器不支持另存为，已改用下载：仅包含锚点、进度和文件信息。', 3600);
+      }
+    } catch (err) {
+      console.error('导出项目文件失败:', err);
+      toast(`导出失败：${err.message || err}`, 3600);
+    } finally {
+      app.isPersisting = false;
+      updatePersistentButtons();
+    }
+  }
+
+  function normalizeImportedBundle(raw) {
+    const bundle = JSON.parse(raw);
+    if (bundle?.format !== 'parallel-reader-project' || !bundle.workspace) {
+      throw new Error('这不是 Parallel Reader 项目文件。');
+    }
+    if (!Array.isArray(bundle.files)) bundle.files = [];
+    if (!Array.isArray(bundle.workspace.fileNames) && bundle.files.length) {
+      bundle.workspace.fileNames = bundle.files.map(f => f.name);
+    }
+    if (!Array.isArray(bundle.workspace.anchors)) {
+      bundle.workspace.anchors = [new Array(Math.min(bundle.files.length || 1, MAX_DOCS)).fill(0)];
+    }
+    bundle.workspace.notes = sanitizeNotes(bundle.workspace.notes || bundle.workspace.annotations || []);
+    bundle.workspace.annotations = bundle.workspace.notes.filter(n => n.type === 'highlight');
+    return bundle;
+  }
+
+  async function importProjectFile(file) {
+    if (!file) return;
+    app.isPersisting = true;
+    updatePersistentButtons();
+    try {
+      const text = await file.text();
+      const bundle = normalizeImportedBundle(text);
+      const meta = bundle.workspace;
+      app.savedWorkspace = meta;
+      app.projectActive = false;
+      if (meta.theme) {
+        els.themeSelect.value = meta.theme;
+        document.body.className = `theme-${meta.theme}`;
+      }
+      if (meta.highlightColor) setHighlightColor(meta.highlightColor);
+      if (typeof meta.autoSave === 'boolean') els.chkAutoSave.checked = meta.autoSave;
+      if (typeof meta.savePdfCopy === 'boolean') els.chkSavePdfCopy.checked = meta.savePdfCopy;
+      const embedded = bundle.files
+        .filter(f => f?.data && f.encoding === 'base64')
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .slice(0, MAX_DOCS);
+
+      await clearWorkspace(false);
+      app.savedWorkspace = meta;
+      app.notes = sanitizeNotes(meta.notes || meta.annotations || []);
+      app.projectActive = false;
+      updatePersistentButtons();
+
+      if (embedded.length) {
+        app.files = embedded.map(f => {
+          const bytes = base64ToUint8Array(f.data);
+          return new File([bytes], f.name || 'document.pdf', { type: f.type || 'application/pdf', lastModified: f.lastModified || Date.now() });
+        });
+        updateFileHint();
+        await loadFiles({ skipFullPersist: true });
+        toast('项目文件已导入。修改后请重新导出项目文件。', 3000);
+      } else {
+        app.files = [];
+        updateFileHint();
+        els.memoryHint.style.display = 'inline-block';
+        els.memoryHint.textContent = `已导入项目状态：请选择【${(meta.fileNames || []).join(', ')}】再开始阅读`;
+        els.memoryHint.title = '这个项目文件没有包含 PDF 副本，只保存了锚点、阅读进度和文件信息。';
+        toast('项目状态已导入；请重新选择同名 PDF。', 3200);
+      }
+      saveWorkspaceNow();
+    } catch (err) {
+      console.error('导入项目文件失败:', err);
+      toast(`导入失败：${err.message || err}`, 4200);
+    } finally {
+      app.isPersisting = false;
+      updatePersistentButtons();
+      if (els.projectFileInput) els.projectFileInput.value = '';
+    }
+  }
+
+  async function clearPersistentStorage() {
+    let db;
+    try {
+      db = await openPersistentDB();
+      const tx = db.transaction([PERSIST_FILES_STORE, PERSIST_META_STORE], 'readwrite');
+      tx.objectStore(PERSIST_FILES_STORE).clear();
+      tx.objectStore(PERSIST_META_STORE).clear();
+      await transactionDone(tx);
+    } catch (err) {
+      console.warn('清除持久化数据失败:', err);
+    } finally {
+      try { db?.close(); } catch (_) {}
+    }
+    app.hasPersistentWorkspace = false;
+    app.projectActive = false;
+    updatePersistentButtons();
+  }
+
+  function updatePersistentButtons() {
+    if (!els.persistGroup) return;
+    app.autoSaveProject = !!els.chkAutoSave?.checked;
+    app.savePdfCopy = !!els.chkSavePdfCopy?.checked;
+    const mode = app.projectActive ? '已保存项目' : '临时';
+    const names = app.docs.length ? app.docs.map(d => d.file.name).join(', ') : '';
+    els.projectStatus.textContent = app.isPersisting ? '项目：保存中…' : `项目：${mode}`;
+    els.projectStatus.title = names || (app.hasPersistentWorkspace ? '浏览器中有本机暂存项目；也可以导出项目文件长期备份' : '当前不会写入浏览器暂存区；可随时导出项目文件');
+    els.btnSaveProject.disabled = app.isPersisting || !app.docs.length;
+    els.btnExportProject.disabled = app.isPersisting || !app.docs.length;
+    els.btnImportProject.disabled = app.isPersisting;
+    els.btnRestorePersist.disabled = app.isPersisting || !app.hasPersistentWorkspace;
+    els.btnTempMode.disabled = app.isPersisting || !app.projectActive;
+    els.btnClearPersist.disabled = app.isPersisting || !app.hasPersistentWorkspace;
+  }
+
+  async function refreshPersistentHint() {
+    const meta = await readPersistentMeta();
+    app.hasPersistentWorkspace = !!meta?.fileNames?.length;
+    if (meta) {
+      if (typeof meta.autoSave === 'boolean') els.chkAutoSave.checked = meta.autoSave;
+      if (typeof meta.savePdfCopy === 'boolean') els.chkSavePdfCopy.checked = meta.savePdfCopy;
+    }
+    updatePersistentButtons();
+    if (app.hasPersistentWorkspace && !app.files.length && !app.docs.length) {
+      els.memoryHint.style.display = 'inline-block';
+      els.memoryHint.textContent = meta.filesEmbedded ? `已暂存项目：${meta.fileNames.join(', ')}` : `已暂存项目状态：${meta.fileNames.join(', ')}`;
+      els.memoryHint.title = meta.filesEmbedded ? '可点击“打开项目”直接恢复 PDF 和阅读状态。' : '该项目未保存 PDF 副本；打开项目后需要重新选择同名 PDF。';
+    }
+  }
+
+  async function restorePersistentWorkspace() {
+    const meta = await readPersistentMeta();
+    if (!meta?.fileNames?.length) {
+      toast('没有找到已保存的项目。');
+      return;
+    }
+    try {
+      app.savedWorkspace = meta;
+      app.notes = sanitizeNotes(meta.notes || meta.annotations || []);
+      app.hasPersistentWorkspace = true;
+      app.projectActive = true;
+      if (typeof meta.autoSave === 'boolean') els.chkAutoSave.checked = meta.autoSave;
+      if (typeof meta.savePdfCopy === 'boolean') els.chkSavePdfCopy.checked = meta.savePdfCopy;
+      updatePersistentButtons();
+      const records = await readPersistentFiles();
+      const usableRecords = records.filter(r => r.blob).slice(0, MAX_DOCS);
+      if (!usableRecords.length) {
+        await clearWorkspace(false);
+        els.memoryHint.style.display = 'inline-block';
+        els.memoryHint.textContent = `项目已打开：请选择【${meta.fileNames.join(', ')}】再开始阅读`;
+        els.memoryHint.title = '该项目只保存了锚点、阅读进度和文件信息，没有保存 PDF 副本。';
+        toast('项目状态已打开；请重新选择同名 PDF。', 3200);
+        return;
+      }
+      await clearWorkspace(false);
+      app.files = usableRecords.map(rec => new File([rec.blob], rec.name, { type: rec.type || 'application/pdf', lastModified: rec.lastModified || Date.now() }));
+      updateFileHint();
+      await loadFiles({ skipFullPersist: true });
+      toast('项目已恢复。');
+    } catch (err) {
+      console.error('恢复持久化项目失败:', err);
+      toast(`恢复失败：${err.message || err}`, 3600);
+    }
+  }
+
+  function loadWorkspaceMeta() {
+    try {
+      app.savedWorkspace = JSON.parse(localStorage.getItem(WORKSPACE_KEY) || 'null');
+    } catch (_) {
+      app.savedWorkspace = null;
+    }
+    const ws = app.savedWorkspace;
+    if (ws?.notes || ws?.annotations) app.notes = sanitizeNotes(ws.notes || ws.annotations || []);
+    if (ws?.theme) {
+      els.themeSelect.value = ws.theme;
+      document.body.className = `theme-${ws.theme}`;
+    }
+    if (ws?.highlightColor) setHighlightColor(ws.highlightColor);
+    if (ws?.fileNames?.length) {
+      els.memoryHint.style.display = 'inline-block';
+      els.memoryHint.textContent = `上次：选择【${ws.fileNames.join(', ')}】可恢复状态`;
+      els.memoryHint.title = '如果没有持久化 PDF 数据，浏览器仍需要你重新选择同名文件。';
+    }
+  }
+
+  function getWorkspaceState() {
+    if (!app.docs.length) return null;
+    const scroll = app.docs[0] ? getPanelScrollState(app.docs[0]) : { index: 0, pct: 0 };
+    const docStates = app.docs.map(d => ({
+      name: d.file.name,
+      size: d.file.size || 0,
+      lastModified: d.file.lastModified || 0,
+      zoom: d.zoom,
+      scroll: getPanelScrollState(d),
+      sidebarOpen: d.sidebar?.classList.contains('open') || false
+    }));
+    return {
+      version: 2,
+      projectMode: app.projectActive ? 'saved' : 'temporary',
+      savePdfCopy: app.savePdfCopy,
+      autoSave: app.autoSaveProject,
+      fileNames: app.docs.map(d => d.file.name),
+      fileMeta: app.docs.map(d => ({ name: d.file.name, size: d.file.size || 0, lastModified: d.file.lastModified || 0 })),
+      docStates,
+      zooms: app.docs.map(d => d.zoom),
+      theme: els.themeSelect.value,
+      highlightColor: app.highlightColor,
+      syncEnabled: app.syncEnabled,
+      anchors: app.anchors,
+      notes: sanitizeNotes(app.notes),
+      annotations: sanitizeNotes(app.notes).filter(n => n.type === 'highlight'),
+      scroll,
+      savedAt: Date.now()
+    };
+  }
+
+  function saveWorkspaceNow() {
+    const state = getWorkspaceState();
+    if (state) {
+      localStorage.setItem(WORKSPACE_KEY, JSON.stringify(state));
+      writePersistentMetaOnly(state);
+      updatePersistentButtons();
+    }
+  }
+
+  function scheduleWorkspaceSave() {
+    clearTimeout(app.saveTimer);
+    app.saveTimer = setTimeout(saveWorkspaceNow, 500);
+  }
+
+  function updateFileHint() {
+    els.fileListHint.textContent = app.files.length ? `[ 已选 ${app.files.length} 个 ]` : '';
+    els.fileListHint.title = app.files.map(f => f.name).join('\n');
+    if (app.files.length) els.memoryHint.style.display = 'none';
+  }
+
+  function updateSyncButton() {
+    els.btnToggleSync.textContent = app.syncEnabled ? '同步开启' : '同步关闭';
+    els.btnToggleSync.className = app.syncEnabled ? 'btn-active' : '';
+  }
+
+  function updateMemoryStats() {
+    const count = app.docs.reduce((sum, d) => sum + d.rendered.size, 0);
+    els.memoryStats.textContent = app.docs.length ? `缓存 ${count} 页` : '';
+  }
+
+  function showEmptyState() {
+    els.container.innerHTML = `<div class="empty-state"><div class="empty-mark">PDF</div><div class="empty-title">选择文档开始阅读</div><div class="empty-desc">支持 1–4 个 PDF 并排阅读、错位锚点同步、项目文件导入导出、目录检索、页面便签、文本高亮和笔记搜索。</div></div>`;
+  }
+
+  async function destroyAllDocs() {
+    for (const doc of app.docs) {
+      await destroyDoc(doc);
+    }
+    app.docs = [];
+  }
+
+  async function destroyDoc(doc) {
+    unloadAllPages(doc);
+    doc.destroyed = true;
+    try { await doc.pdf?.destroy?.(); } catch (_) {}
+    doc.wrapper?.remove();
+  }
+
+  function unloadAllPages(doc) {
+    for (const idx of Array.from(doc.rendered.keys())) unloadPage(doc, idx);
+  }
+
+  function cancelPageWork(page) {
+    if (!page) return;
+    try { page.task?.cancel?.(); } catch (_) {}
+    page.task = null;
+    if (page.detailsTimer) {
+      clearTimeout(page.detailsTimer);
+      page.detailsTimer = 0;
+    }
+    page.rendering = false;
+  }
+
+  function unloadPage(doc, index) {
+    const page = doc.pages[index];
+    if (!page) return;
+    page.token++;
+    cancelPageWork(page);
+    const canvas = page.el.querySelector('canvas');
+    if (canvas) {
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    page.el.innerHTML = `<div class="page-placeholder">第 ${index + 1} 页</div>`;
+    page.loaded = false;
+    doc.rendered.delete(index);
+  }
+
+  function invalidatePagesForZoom(doc) {
+    if (!doc.pages.length) return;
+    const current = getCurrentPageIndex(doc);
+    const keepStart = clamp(current - PREFETCH_PAGES - 1, 0, doc.pages.length - 1);
+    const keepEnd = clamp(current + PREFETCH_PAGES + 1, 0, doc.pages.length - 1);
+
+    for (let i = 0; i < doc.pages.length; i++) {
+      const page = doc.pages[i];
+      page.token++;
+      cancelPageWork(page);
+      page.loaded = false;
+      doc.rendered.delete(i);
+      if (i < keepStart || i > keepEnd) unloadPage(doc, i);
+    }
+    updateMemoryStats();
+  }
+
+  function makeDocSkeleton(file, restoredState, docIndex) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'panel-wrapper';
+    wrapper.draggable = false;
+
+    const header = document.createElement('div');
+    header.className = 'panel-header';
+
+    const left = document.createElement('div');
+    left.className = 'header-left';
+
+    const drag = document.createElement('span');
+    drag.className = 'drag-handle';
+    drag.textContent = '⠿';
+    drag.title = '拖拽排序';
+    drag.draggable = true;
+
+    const sidebarBtn = document.createElement('button');
+    sidebarBtn.className = 'mini-btn';
+    sidebarBtn.textContent = '目录';
+    sidebarBtn.title = '目录与检索';
+
+    const title = document.createElement('span');
+    title.className = 'panel-title';
+    title.textContent = file.name;
+    title.title = file.name;
+
+    left.append(drag, sidebarBtn, title);
+
+    const controls = document.createElement('div');
+    controls.className = 'panel-controls';
+
+    const zOut = document.createElement('button');
+    zOut.className = 'mini-btn';
+    zOut.textContent = '−';
+    const zInput = document.createElement('input');
+    zInput.type = 'number';
+    zInput.className = 'data-input zoom-input';
+    const zIn = document.createElement('button');
+    zIn.className = 'mini-btn';
+    zIn.textContent = '+';
+    const pct = document.createElement('span');
+    pct.textContent = '%';
+
+    const pageInput = document.createElement('input');
+    pageInput.type = 'number';
+    pageInput.className = 'data-input page-input';
+    pageInput.min = '1';
+    const pageTotal = document.createElement('span');
+    pageTotal.textContent = '/ ?';
+
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn-close';
+    close.textContent = '×';
+    close.title = '关闭当前文档';
+
+    const div = document.createElement('div');
+    div.className = 'divider';
+    controls.append(zOut, zInput, pct, zIn, div, pageInput, pageTotal, close);
+    header.append(left, controls);
+
+    const body = document.createElement('div');
+    body.className = 'panel-body';
+
+    const sidebar = document.createElement('div');
+    sidebar.className = 'panel-sidebar';
+    sidebar.innerHTML = `
+      <div class="sidebar-tabs">
+        <button class="sidebar-tab active" data-tab="toc">目录</button>
+        <button class="sidebar-tab" data-tab="search">检索</button>
+        <button class="sidebar-tab" data-tab="notes">批注</button>
+      </div>
+      <div class="sidebar-content toc-area"><div style="color:var(--text-muted);padding:10px;">读取中...</div></div>
+      <div class="sidebar-content search-area" style="display:none;">
+        <div class="search-box"><input class="search-input" type="text" placeholder="输入关键字回车..."></div>
+        <div class="search-results"></div>
+      </div>
+      <div class="sidebar-content notes-area" style="display:none;">
+        <div class="notes-actions"><button class="mini-btn btn-page-note" type="button">页面便签</button><button class="mini-btn btn-highlight" type="button">高亮选中</button></div>
+        <input class="note-search-input" type="text" placeholder="搜索批注和笔记...">
+        <div class="notes-list"></div>
+      </div>`;
+
+    const scroller = document.createElement('div');
+    scroller.className = 'pdf-panel';
+    body.append(sidebar, scroller);
+    wrapper.append(header, body);
+
+    const zoom = clamp(restoredState?.zooms?.[docIndex] || DEFAULT_ZOOM, MIN_ZOOM, MAX_ZOOM);
+    zInput.value = Math.round(zoom * 100);
+
+    return {
+      id: uid(),
+      file,
+      pdf: null,
+      wrapper,
+      header,
+      sidebar,
+      sidebarBtn,
+      scroller,
+      drag,
+      zoom,
+      pageInput,
+      pageTotal,
+      zInput,
+      zIn,
+      zOut,
+      close,
+      pages: [],
+      pageCount: 0,
+      rendered: new Map(),
+      currentIndex: 0,
+      outlineLoaded: false,
+      searchToken: 0,
+      destroyed: false,
+      renderQueue: Promise.resolve(),
+      renderTimer: 0,
+      renderRequestId: 0,
+      lastScrollTop: 0,
+      lastScrollTime: performance.now(),
+      scrollFast: false,
+      syncRaf: 0
+    };
+  }
+
+  async function loadFiles(options = {}) {
+    if (!app.files.length) {
+      alert('请先选择 PDF 文件。');
+      return;
+    }
+
+    const saved = app.savedWorkspace;
+    const fileNames = app.files.map(f => f.name);
+    const isRestore = !!saved && Array.isArray(saved.fileNames) && saved.fileNames.join('|') === fileNames.join('|');
+
+    els.container.innerHTML = '';
+    await destroyAllDocs();
+    app.navHistory = [];
+    app.navIndex = -1;
+    updateHistoryButtons();
+
+    if (isRestore) {
+      app.anchors = Array.isArray(saved.anchors) ? saved.anchors : [new Array(app.files.length).fill(0)];
+      app.notes = sanitizeNotes(saved.notes || saved.annotations || []);
+      app.syncEnabled = saved.syncEnabled !== false;
+    } else {
+      app.anchors = [new Array(app.files.length).fill(0)];
+      app.notes = [];
+      app.syncEnabled = true;
+    }
+    updateSyncButton();
+
+    for (let i = 0; i < app.files.length; i++) {
+      const doc = makeDocSkeleton(app.files[i], isRestore ? saved : null, i);
+      app.docs.push(doc);
+      els.container.appendChild(doc.wrapper);
+      attachDocEvents(doc);
+
+      try {
+        const arrayBuffer = await doc.file.arrayBuffer();
+        doc.pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        doc.pageCount = doc.pdf.numPages;
+        doc.pageTotal.textContent = `/ ${doc.pageCount}`;
+        await createPagePlaceholders(doc);
+      } catch (err) {
+        console.error(err);
+        doc.scroller.innerHTML = `<div style="padding:20px;color:var(--danger)">加载失败：${escapeHtml(err.message || err)}</div>`;
+      }
+    }
+
+    applyAllPanelWidths();
+    if (app.docs.length) {
+      els.globalZoomInput.value = Math.round(app.docs[0].zoom * 100);
+      if (isRestore && saved?.scroll) {
+        setTimeout(() => {
+          restorePanelScrollState(app.docs[0], saved.scroll);
+          updateAllIndicators();
+          scheduleRenderAll();
+          setTimeout(saveNavState, 300);
+        }, 100);
+      } else {
+        updateAllIndicators();
+        scheduleRenderAll();
+        setTimeout(saveNavState, 300);
+      }
+    }
+    scheduleWorkspaceSave();
+    if (!options.skipFullPersist) schedulePersistentFullSave({ silent: true });
+  }
+
+  async function createPagePlaceholders(doc) {
+    doc.scroller.innerHTML = '';
+    let defaultRatio = 1.414;
+    try {
+      const firstPage = await doc.pdf.getPage(1);
+      const vp = firstPage.getViewport({ scale: 1 });
+      defaultRatio = vp.height / vp.width;
+    } catch (_) {}
+
+    for (let i = 0; i < doc.pageCount; i++) {
+      const pageEl = document.createElement('div');
+      pageEl.className = 'page-wrapper';
+      pageEl.dataset.pageIndex = String(i);
+      pageEl.dataset.ratio = String(defaultRatio);
+      pageEl.innerHTML = `<div class="page-placeholder">第 ${i + 1} 页</div>`;
+      doc.scroller.appendChild(pageEl);
+      doc.pages.push({ el: pageEl, ratio: defaultRatio, loaded: false, rendering: false, token: 0, task: null, detailsTimer: 0 });
+    }
+  }
+
+  function attachDocEvents(doc) {
+    const docIndex = () => app.docs.indexOf(doc);
+
+    doc.drag.ondragstart = e => {
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData('text/plain', String(docIndex()));
+      doc.wrapper.style.opacity = '0.45';
+    };
+    doc.drag.ondragend = () => { doc.wrapper.style.opacity = '1'; };
+    doc.wrapper.ondragover = e => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; };
+    doc.wrapper.ondrop = e => {
+      e.preventDefault();
+      const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+      const to = Array.from(els.container.children).indexOf(doc.wrapper);
+      if (!Number.isNaN(from) && !Number.isNaN(to) && from !== to) reorderDocuments(from, to);
+    };
+
+    doc.sidebarBtn.onclick = () => {
+      const show = doc.sidebar.style.display !== 'flex';
+      doc.sidebar.style.display = show ? 'flex' : 'none';
+      doc.sidebarBtn.classList.toggle('active', show);
+      if (show && !doc.outlineLoaded) {
+        doc.outlineLoaded = true;
+        renderOutline(doc);
+      }
+    };
+
+    const tabs = doc.sidebar.querySelectorAll('.sidebar-tab');
+    const tocArea = doc.sidebar.querySelector('.toc-area');
+    const searchArea = doc.sidebar.querySelector('.search-area');
+    const notesArea = doc.sidebar.querySelector('.notes-area');
+    tabs.forEach(tab => {
+      tab.onclick = () => {
+        tabs.forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        const target = tab.dataset.tab;
+        tocArea.style.display = target === 'toc' ? 'block' : 'none';
+        searchArea.style.display = target === 'search' ? 'block' : 'none';
+        notesArea.style.display = target === 'notes' ? 'block' : 'none';
+        if (target === 'search') doc.sidebar.querySelector('.search-input').focus();
+        if (target === 'notes') { renderNotesList(doc); doc.sidebar.querySelector('.note-search-input').focus(); }
+      };
+    });
+
+    const searchInput = doc.sidebar.querySelector('.search-input');
+    const searchResults = doc.sidebar.querySelector('.search-results');
+    searchInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') runSearch(doc, searchInput.value, searchResults);
+    });
+    doc.sidebar.querySelector('.btn-page-note').onclick = () => addOrEditPageNote(doc);
+    doc.sidebar.querySelector('.btn-highlight').onclick = () => addHighlightFromSelection(doc);
+    doc.sidebar.querySelector('.note-search-input').addEventListener('input', () => renderNotesList(doc));
+
+    const updateZoom = pct => {
+      const next = clamp((parseInt(pct, 10) || 90) / 100, MIN_ZOOM, MAX_ZOOM);
+      setDocZoom(doc, next);
+    };
+    doc.zOut.onclick = () => updateZoom(parseInt(doc.zInput.value, 10) - 10);
+    doc.zIn.onclick = () => updateZoom(parseInt(doc.zInput.value, 10) + 10);
+    doc.zInput.addEventListener('change', () => updateZoom(doc.zInput.value));
+    doc.zInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.currentTarget.blur(); updateZoom(e.currentTarget.value); } });
+
+    doc.pageInput.addEventListener('keydown', e => {
+      if (e.key !== 'Enter') return;
+      const page = clamp((parseInt(doc.pageInput.value, 10) || 1) - 1, 0, Math.max(0, doc.pageCount - 1));
+      saveNavState();
+      scrollDocToPage(doc, page, 0, true);
+      doc.pageInput.blur();
+    });
+
+    doc.close.addEventListener('click', async e => {
+      e.preventDefault();
+      e.stopPropagation();
+      await removeDocumentByDoc(doc, { confirmClose: false });
+    });
+
+    const markActive = () => { app.userActiveDocId = doc.id; };
+    doc.scroller.addEventListener('mouseenter', markActive);
+    doc.scroller.addEventListener('mousedown', markActive);
+    doc.scroller.addEventListener('wheel', markActive, { passive: true });
+    doc.scroller.addEventListener('touchstart', markActive, { passive: true });
+    doc.scroller.addEventListener('keydown', markActive);
+
+    doc.scroller.addEventListener('scroll', () => {
+      if (doc.destroyed) return;
+
+      const now = performance.now();
+      const top = doc.scroller.scrollTop;
+      const dt = Math.max(1, now - (doc.lastScrollTime || now));
+      const delta = Math.abs(top - (doc.lastScrollTop || 0));
+      doc.scrollFast = (delta / dt) > FAST_SCROLL_PX_PER_MS || delta > doc.scroller.clientHeight * FAST_SCROLL_VIEWPORT_FACTOR;
+      doc.lastScrollTop = top;
+      doc.lastScrollTime = now;
+
+      updateIndicator(doc);
+
+      const isPassiveSyncedScroll = app.syncing && app.userActiveDocId !== doc.id;
+      if (isPassiveSyncedScroll) return;
+
+      scheduleRenderAround(doc, doc.scrollFast);
+      scheduleWorkspaceSave();
+
+      clearTimeout(app.historyTimer);
+      app.historyTimer = setTimeout(saveNavState, 1200);
+
+      if (!app.syncEnabled || app.syncing || app.suppressHistory) return;
+      if (app.userActiveDocId !== doc.id) return;
+      scheduleSync(doc);
+    }, { passive: true });
+  }
+
+  function moveItem(arr, from, to) {
+    arr.splice(to, 0, arr.splice(from, 1)[0]);
+  }
+
+  function reorderDocuments(from, to) {
+    const states = app.docs.map(getPanelScrollState);
+    moveItem(app.docs, from, to);
+    moveItem(states, from, to);
+    app.anchors.forEach(a => moveItem(a, from, to));
+    app.docs.forEach(d => els.container.appendChild(d.wrapper));
+    app.docs.forEach((d, i) => restorePanelScrollState(d, states[i]));
+    updateAllIndicators();
+    scheduleWorkspaceSave();
+    schedulePersistentFullSave({ silent: true });
+    saveNavState();
+  }
+
+  async function removeDocumentByDoc(doc, options = {}) {
+    const index = app.docs.indexOf(doc);
+    if (index < 0) return;
+    await removeDocument(index, options);
+  }
+
+  async function removeDocument(index, options = {}) {
+    if (index < 0 || index >= app.docs.length) return;
+    const doc = app.docs[index];
+    const needConfirm = options.confirmClose === true;
+    if (needConfirm && !confirm(`关闭《${doc.file.name}》吗？`)) return;
+    app.docs.splice(index, 1);
+    app.files.splice(index, 1);
+    app.notes = app.notes.filter(n => !noteMatchesDoc(n, doc));
+    app.anchors.forEach(a => a.splice(index, 1));
+    app.anchors = app.anchors.filter(a => a.length === app.docs.length);
+    if (app.docs.length && !app.anchors.length) app.anchors = [new Array(app.docs.length).fill(0)];
+    if (app.userActiveDocId === doc.id) app.userActiveDocId = app.docs[0]?.id || null;
+    await destroyDoc(doc);
+    toast(`已关闭：${doc.file.name}`);
+    if (!app.docs.length) {
+      await clearWorkspace(false);
+      return;
+    }
+    updateFileHint();
+    updateAllIndicators();
+    scheduleWorkspaceSave();
+    schedulePersistentFullSave({ silent: true });
+    saveNavState();
+  }
+
+  function updateIndicator(doc) {
+    const idx = getCurrentPageIndex(doc);
+    doc.currentIndex = idx;
+    if (document.activeElement !== doc.pageInput) doc.pageInput.value = String(idx + 1);
+    doc.pageTotal.textContent = `/ ${doc.pageCount || '?'}`;
+  }
+
+  function updateAllIndicators() {
+    app.docs.forEach(updateIndicator);
+    updateHistoryButtons();
+    updateMemoryStats();
+  }
+
+  function findPageIndexAt(doc, y) {
+    if (!doc.pages.length) return 0;
+    let lo = 0;
+    let hi = doc.pages.length - 1;
+    let ans = hi;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      const el = doc.pages[mid].el;
+      if (el.offsetTop + el.offsetHeight > y) {
+        ans = mid;
+        hi = mid - 1;
+      } else {
+        lo = mid + 1;
+      }
+    }
+    return clamp(ans, 0, doc.pages.length - 1);
+  }
+
+  function getCurrentPageIndex(doc) {
+    if (!doc.pages.length) return 0;
+    return findPageIndexAt(doc, doc.scroller.scrollTop + doc.scroller.clientHeight / 2);
+  }
+
+  function getPanelScrollState(doc) {
+    if (!doc.pages.length) return { index: 0, pct: 0 };
+    const top = doc.scroller.scrollTop;
+    const index = findPageIndexAt(doc, top);
+    const el = doc.pages[index].el;
+    return { index, pct: (top - el.offsetTop) / Math.max(1, el.offsetHeight) };
+  }
+
+  function restorePanelScrollState(doc, state) {
+    if (!doc || !state) return;
+    const idx = clamp(state.index || 0, 0, Math.max(0, doc.pages.length - 1));
+    const el = doc.pages[idx]?.el;
+    if (!el) return;
+    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * (state.pct || 0);
+  }
+
+  function scrollDocToPage(doc, pageIndex, pct = 0, syncAfter = false, preferIdleRender = false) {
+    const idx = clamp(pageIndex, 0, Math.max(0, doc.pages.length - 1));
+    const el = doc.pages[idx]?.el;
+    if (!el) return;
+    doc.scroller.scrollTop = el.offsetTop + el.offsetHeight * clamp(pct, 0, 1);
+    updateIndicator(doc);
+    scheduleRenderAround(doc, preferIdleRender);
+    scheduleWorkspaceSave();
+    if (syncAfter) performSync(doc);
+  }
+
+  function performSync(sourceDoc) {
+    const sourceIndex = app.docs.indexOf(sourceDoc);
+    if (sourceIndex < 0) return;
+    const sourceState = getPanelScrollState(sourceDoc);
+    const sourcePage = sourceState.index;
+    const pct = sourceState.pct;
+
+    let activeAnchor = app.anchors[0] || new Array(app.docs.length).fill(0);
+    for (let i = app.anchors.length - 1; i >= 0; i--) {
+      const a = app.anchors[i];
+      if ((a[sourceIndex] || 0) <= sourcePage) { activeAnchor = a; break; }
+    }
+
+    app.syncing = true;
+    app.docs.forEach((doc, targetIndex) => {
+      if (doc === sourceDoc) return;
+      const sourceBase = activeAnchor[sourceIndex] || 0;
+      const targetBase = activeAnchor[targetIndex] || 0;
+      const targetPage = targetBase + (sourcePage - sourceBase);
+      scrollDocToPage(doc, targetPage, pct, false, sourceDoc.scrollFast);
+    });
+    requestAnimationFrame(() => { app.syncing = false; });
+  }
+
+  function addAnchor() {
+    if (app.docs.length < 2) {
+      toast('至少打开两个文档才需要错位锚点。');
+      return;
+    }
+    const anchor = app.docs.map(getCurrentPageIndex);
+    app.anchors = app.anchors.filter(a => Math.abs((a[0] || 0) - anchor[0]) > 1);
+    app.anchors.push(anchor);
+    app.anchors.sort((a, b) => (a[0] || 0) - (b[0] || 0));
+    app.syncEnabled = true;
+    updateSyncButton();
+    scheduleWorkspaceSave();
+    toast(`锚点已记录：${anchor.map(n => n + 1).join(' / ')}`);
+  }
+
+  function setDocZoom(doc, zoom) {
+    const state = getPanelScrollState(doc);
+    doc.zoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    doc.zInput.value = Math.round(doc.zoom * 100);
+    applyPanelWidth(doc);
+    invalidatePagesForZoom(doc);
+    restorePanelScrollState(doc, state);
+    scheduleRenderAround(doc);
+    scheduleWorkspaceSave();
+    updateMemoryStats();
+  }
+
+  function applyGlobalZoom(pct) {
+    const zoom = clamp((parseInt(pct, 10) || 90) / 100, MIN_ZOOM, MAX_ZOOM);
+    els.globalZoomInput.value = Math.round(zoom * 100);
+    app.docs.forEach(doc => setDocZoom(doc, zoom));
+  }
+
+  function applyPanelWidth(doc) {
+    const available = Math.max(200, doc.scroller.clientWidth);
+    const targetWidth = Math.max(160, Math.floor(available * doc.zoom));
+    for (const page of doc.pages) {
+      page.el.style.width = `${targetWidth}px`;
+      page.el.style.height = `${Math.floor(targetWidth * page.ratio)}px`;
+    }
+  }
+
+  function applyAllPanelWidths() {
+    app.docs.forEach(applyPanelWidth);
+  }
+
+  function scheduleRenderAll() {
+    app.docs.forEach(scheduleRenderAround);
+  }
+
+  function scheduleRenderAround(doc, preferIdle = false) {
+    if (!doc.pdf || !doc.pages.length || doc.destroyed) return;
+    const requestId = ++doc.renderRequestId;
+    clearTimeout(doc.renderTimer);
+    const delay = preferIdle ? SCROLL_RENDER_IDLE_FAST_MS : SCROLL_RENDER_IDLE_NORMAL_MS;
+    doc.renderTimer = setTimeout(() => {
+      requestAnimationFrame(() => {
+        if (doc.destroyed || requestId !== doc.renderRequestId) return;
+        renderAround(doc).catch(err => console.error('renderAround failed', err));
+      });
+    }, delay);
+  }
+
+  async function renderAround(doc) {
+    if (doc.destroyed) return;
+    const current = getCurrentPageIndex(doc);
+    const start = clamp(current - PREFETCH_PAGES, 0, doc.pages.length - 1);
+    const end = clamp(current + PREFETCH_PAGES, 0, doc.pages.length - 1);
+
+    for (let i = 0; i < doc.pages.length; i++) {
+      const page = doc.pages[i];
+      if (page.rendering && Math.abs(i - current) > PREFETCH_PAGES + RENDER_STALE_DISTANCE) {
+        page.token++;
+        cancelPageWork(page);
+      }
+    }
+
+    const indices = [];
+    for (let i = start; i <= end; i++) indices.push(i);
+    indices.sort((a, b) => Math.abs(a - current) - Math.abs(b - current));
+    for (const i of indices) renderPage(doc, i);
+
+    pruneRenderedPages(doc, current, start, end);
+    updateMemoryStats();
+  }
+
+  function pruneRenderedPages(doc, current, protectedStart, protectedEnd) {
+    for (const index of Array.from(doc.rendered.keys())) {
+      if (index >= protectedStart && index <= protectedEnd) continue;
+      if (Math.abs(index - current) > KEEP_DISTANCE) unloadPage(doc, index);
+    }
+    const rendered = Array.from(doc.rendered.entries());
+    if (rendered.length <= MAX_RENDERED_PAGES_PER_DOC) return;
+    rendered.sort((a, b) => a[1].lastUsed - b[1].lastUsed);
+    for (const [index] of rendered) {
+      if (doc.rendered.size <= MAX_RENDERED_PAGES_PER_DOC) break;
+      if (index >= protectedStart && index <= protectedEnd) continue;
+      unloadPage(doc, index);
+    }
+  }
+
+  function isRenderStillRelevant(doc, index) {
+    if (doc.destroyed || !doc.pages.length) return false;
+    const current = getCurrentPageIndex(doc);
+    return Math.abs(index - current) <= PREFETCH_PAGES + RENDER_STALE_DISTANCE;
+  }
+
+  function scheduleSync(doc) {
+    if (doc.syncRaf) return;
+    doc.syncRaf = requestAnimationFrame(() => {
+      doc.syncRaf = 0;
+      if (!app.syncEnabled || app.syncing || app.suppressHistory) return;
+      if (app.userActiveDocId !== doc.id || doc.destroyed) return;
+      performSync(doc);
+    });
+  }
+
+  function renderPage(doc, index) {
+    const pageState = doc.pages[index];
+    if (!pageState || pageState.loaded || pageState.rendering || doc.destroyed) {
+      if (pageState?.loaded) doc.rendered.set(index, { lastUsed: performance.now() });
+      return;
+    }
+
+    pageState.rendering = true;
+    const token = ++pageState.token;
+    if (!pageState.el.querySelector('canvas')) {
+      pageState.el.innerHTML = `<div class="page-placeholder">渲染第 ${index + 1} 页...</div>`;
+    }
+
+    doc.renderQueue = doc.renderQueue.then(async () => {
+      if (doc.destroyed || token !== pageState.token) return;
+      if (!isRenderStillRelevant(doc, index)) return;
+
+      let canvas = null;
+      try {
+        const page = await doc.pdf.getPage(index + 1);
+        if (doc.destroyed || token !== pageState.token || !isRenderStillRelevant(doc, index)) return;
+
+        const baseVp = page.getViewport({ scale: 1 });
+        const width = parseFloat(pageState.el.style.width) || pageState.el.clientWidth || 800;
+        const scale = width / baseVp.width;
+        const viewport = page.getViewport({ scale });
+        const ratio = viewport.height / viewport.width;
+        pageState.ratio = ratio;
+        pageState.el.dataset.ratio = String(ratio);
+        pageState.el.style.height = `${Math.floor(width * ratio)}px`;
+
+        canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d', { alpha: false });
+        canvas.width = Math.ceil(viewport.width);
+        canvas.height = Math.ceil(viewport.height);
+        canvas.style.width = `${viewport.width}px`;
+        canvas.style.height = `${viewport.height}px`;
+        ctx.save();
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.restore();
+
+        const renderTask = page.render({ canvasContext: ctx, viewport });
+        pageState.task = renderTask;
+        try {
+          await renderTask.promise;
+        } finally {
+          if (pageState.task === renderTask) pageState.task = null;
+        }
+        if (doc.destroyed || token !== pageState.token || !isRenderStillRelevant(doc, index)) {
+          canvas.width = 0;
+          canvas.height = 0;
+          return;
+        }
+
+        pageState.el.replaceChildren(canvas);
+        pageState.loaded = true;
+        doc.rendered.set(index, { lastUsed: performance.now() });
+        renderStoredNotesForPage(doc, index);
+        scheduleDetailsLayer(doc, index, page, pageState, viewport, scale, token);
+      } catch (err) {
+        const cancelled = err?.name === 'RenderingCancelledException' || /cancel/i.test(String(err?.message || err));
+        if (!cancelled) console.error('page render failed', err);
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+        if (!cancelled && token === pageState.token) {
+          pageState.el.innerHTML = `<div style="color:var(--danger);padding:12px;">第 ${index + 1} 页渲染失败</div>`;
+        }
+      } finally {
+        if (token === pageState.token) pageState.rendering = false;
+      }
+    });
+  }
+
+  function scheduleDetailsLayer(doc, index, page, pageState, viewport, scale, token) {
+    if (pageState.detailsTimer) clearTimeout(pageState.detailsTimer);
+    pageState.detailsTimer = setTimeout(async () => {
+      pageState.detailsTimer = 0;
+      if (doc.destroyed || token !== pageState.token || !pageState.loaded || !isRenderStillRelevant(doc, index)) return;
+
+      try {
+        const textLayer = document.createElement('div');
+        textLayer.className = 'textLayer';
+        textLayer.style.width = `${viewport.width}px`;
+        textLayer.style.height = `${viewport.height}px`;
+        textLayer.style.setProperty('--scale-factor', scale);
+        pageState.el.appendChild(textLayer);
+        const textContent = await page.getTextContent();
+        if (doc.destroyed || token !== pageState.token || !pageState.loaded || !isRenderStillRelevant(doc, index)) {
+          textLayer.remove();
+          return;
+        }
+        await pdfjsLib.renderTextLayer({
+          textContentSource: textContent,
+          container: textLayer,
+          viewport,
+          textDivs: []
+        }).promise;
+      } catch (_) {
+        // 文本层失败不影响图像阅读。
+      }
+
+      if (doc.destroyed || token !== pageState.token || !pageState.loaded || !isRenderStillRelevant(doc, index)) return;
+      try {
+        const annotations = await page.getAnnotations();
+        if (doc.destroyed || token !== pageState.token || !pageState.loaded) return;
+        addAnnotationLinks(doc, pageState.el, annotations, viewport);
+        renderStoredNotesForPage(doc, index);
+      } catch (err) {
+        console.warn('annotation render failed', err);
+      }
+    }, DETAILS_LAYER_IDLE_MS);
+  }
+
+  function addAnnotationLinks(doc, wrapper, annotations, viewport) {
+    annotations.forEach(anno => {
+      if (anno.subtype !== 'Link' || !anno.rect) return;
+      const a = document.createElement('a');
+      const rect = viewport.convertToViewportRectangle(anno.rect);
+      const x = Math.min(rect[0], rect[2]);
+      const y = Math.min(rect[1], rect[3]);
+      a.className = 'pdf-link';
+      a.style.left = `${x}px`;
+      a.style.top = `${y}px`;
+      a.style.width = `${Math.abs(rect[2] - rect[0])}px`;
+      a.style.height = `${Math.abs(rect[3] - rect[1])}px`;
+      a.style.cursor = 'pointer';
+
+      if (anno.url) {
+        a.href = anno.url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.title = anno.url;
+      } else if (anno.dest) {
+        a.href = '#';
+        a.title = '跳转至文档内其它位置';
+        a.onclick = async e => {
+          e.preventDefault();
+          await jumpToDestination(doc, anno.dest);
+        };
+      }
+      wrapper.appendChild(a);
+    });
+  }
+
+  async function jumpToDestination(doc, dest) {
+    try {
+      let resolved = dest;
+      if (typeof resolved === 'string') resolved = await doc.pdf.getDestination(resolved);
+      if (resolved?.[0]) {
+        const pageIndex = await doc.pdf.getPageIndex(resolved[0]);
+        saveNavState();
+        scrollDocToPage(doc, pageIndex, 0, true);
+      }
+    } catch (err) {
+      console.warn('destination jump failed', err);
+    }
+  }
+
+  async function renderOutline(doc) {
+    const tocArea = doc.sidebar.querySelector('.toc-area');
+    try {
+      const outline = await doc.pdf.getOutline();
+      tocArea.innerHTML = '';
+      if (!outline?.length) {
+        tocArea.innerHTML = '<div style="color:var(--text-muted);padding:10px;">未提取到书签/目录</div>';
+        return;
+      }
+      const ul = document.createElement('ul');
+      ul.className = 'toc-list';
+      outline.forEach(item => ul.appendChild(makeOutlineItem(doc, item)));
+      tocArea.appendChild(ul);
+    } catch (err) {
+      console.warn('outline failed', err);
+      tocArea.innerHTML = '<div style="color:var(--danger);padding:10px;">目录读取失败</div>';
+    }
+  }
+
+  function makeOutlineItem(doc, item) {
+    const li = document.createElement('li');
+    const a = document.createElement('a');
+    a.className = 'toc-link';
+    a.textContent = item.title || '(未命名)';
+    a.onclick = async () => {
+      saveNavState();
+      await jumpToDestination(doc, item.dest);
+    };
+    li.appendChild(a);
+    if (item.items?.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'toc-list';
+      item.items.forEach(child => ul.appendChild(makeOutlineItem(doc, child)));
+      li.appendChild(ul);
+    }
+    return li;
+  }
+
+  async function runSearch(doc, query, resultsEl) {
+    const q = query.trim();
+    const token = ++doc.searchToken;
+    if (!q) return;
+    resultsEl.innerHTML = '<div style="padding:10px;color:var(--text-muted);">搜索中...</div>';
+
+    const frag = document.createDocumentFragment();
+    let count = 0;
+    const safeQ = escapeRegExp(q);
+    const re = new RegExp(safeQ, 'ig');
+
+    try {
+      for (let i = 1; i <= doc.pageCount; i++) {
+        if (token !== doc.searchToken) return;
+        const page = await doc.pdf.getPage(i);
+        const text = await page.getTextContent();
+        const pageText = text.items.map(item => item.str || '').join(' ');
+        const match = pageText.toLowerCase().indexOf(q.toLowerCase());
+        if (match !== -1) {
+          count++;
+          const start = Math.max(0, match - 24);
+          const end = Math.min(pageText.length, match + q.length + 36);
+          const snippet = pageText.slice(start, end);
+          const div = document.createElement('div');
+          div.className = 'search-result-item';
+          div.innerHTML = `<span style="color:var(--text-muted);font-size:10px;">P.${i}</span>: ...${escapeHtml(snippet).replace(re, m => `<b>${escapeHtml(m)}</b>`)}...`;
+          div.onclick = () => {
+            saveNavState();
+            scrollDocToPage(doc, i - 1, 0, true);
+          };
+          frag.appendChild(div);
+        }
+        if (i % 8 === 0) {
+          resultsEl.innerHTML = `<div style="padding:5px;color:var(--text-muted);">已搜索 ${i}/${doc.pageCount} 页，找到 ${count} 条...</div>`;
+          await waitFrame();
+        }
+      }
+      resultsEl.innerHTML = '';
+      if (!count) {
+        resultsEl.innerHTML = '<div style="padding:10px;color:var(--text-muted);">未找到匹配项</div>';
+      } else {
+        const head = document.createElement('div');
+        head.style.cssText = 'padding:5px;font-weight:bold;border-bottom:1px solid var(--border);margin-bottom:5px;';
+        head.textContent = `共 ${count} 条结果`;
+        resultsEl.append(head, frag);
+      }
+    } catch (err) {
+      console.error('search failed', err);
+      resultsEl.innerHTML = '<div style="padding:10px;color:var(--danger);">搜索失败</div>';
+    }
+  }
+
+
+  function openNoteEditor({ title = '编辑笔记', hint = '', text = '', allowDelete = false } = {}) {
+    return new Promise(resolve => {
+      els.noteModalTitle.textContent = title;
+      els.noteModalHint.textContent = hint;
+      els.noteModalText.value = text || '';
+      els.noteModalDelete.style.visibility = allowDelete ? 'visible' : 'hidden';
+      els.noteModalBackdrop.classList.add('show');
+      setTimeout(() => els.noteModalText.focus(), 30);
+
+      const cleanup = result => {
+        els.noteModalBackdrop.classList.remove('show');
+        els.noteModalSave.onclick = null;
+        els.noteModalCancel.onclick = null;
+        els.noteModalClose.onclick = null;
+        els.noteModalDelete.onclick = null;
+        els.noteModalBackdrop.onmousedown = null;
+        document.removeEventListener('keydown', onKey, true);
+        resolve(result);
+      };
+      const onKey = e => {
+        if (!els.noteModalBackdrop.classList.contains('show')) return;
+        if (e.key === 'Escape') { e.preventDefault(); cleanup({ action: 'cancel' }); }
+        if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); cleanup({ action: 'save', text: els.noteModalText.value }); }
+      };
+      document.addEventListener('keydown', onKey, true);
+      els.noteModalSave.onclick = () => cleanup({ action: 'save', text: els.noteModalText.value });
+      els.noteModalCancel.onclick = () => cleanup({ action: 'cancel' });
+      els.noteModalClose.onclick = () => cleanup({ action: 'cancel' });
+      els.noteModalDelete.onclick = () => cleanup({ action: 'delete' });
+      els.noteModalBackdrop.onmousedown = e => { if (e.target === els.noteModalBackdrop) cleanup({ action: 'cancel' }); };
+    });
+  }
+
+  function upsertNote(note) {
+    const idx = app.notes.findIndex(n => n.id === note.id);
+    const clean = sanitizeNotes([{ ...note, updatedAt: Date.now() }])[0];
+    if (!clean) return;
+    if (idx >= 0) app.notes[idx] = clean;
+    else app.notes.push(clean);
+    refreshNotesUI();
+    scheduleWorkspaceSave();
+    schedulePersistentFullSave({ silent: true });
+  }
+
+  function deleteNote(noteId) {
+    const before = app.notes.length;
+    app.notes = app.notes.filter(n => n.id !== noteId);
+    if (app.notes.length !== before) {
+      refreshNotesUI();
+      scheduleWorkspaceSave();
+      schedulePersistentFullSave({ silent: true });
+    }
+  }
+
+  function refreshNotesUI() {
+    app.docs.forEach(doc => {
+      for (let i = 0; i < doc.pages.length; i++) {
+        if (doc.pages[i]?.loaded) renderStoredNotesForPage(doc, i);
+      }
+      renderNotesList(doc);
+    });
+  }
+
+  function openNotesTab(doc) {
+    if (!doc) return;
+    const show = doc.sidebar.style.display !== 'flex';
+    if (show) {
+      doc.sidebar.style.display = 'flex';
+      doc.sidebarBtn.classList.add('active');
+    }
+    const tabs = doc.sidebar.querySelectorAll('.sidebar-tab');
+    tabs.forEach(t => t.classList.toggle('active', t.dataset.tab === 'notes'));
+    doc.sidebar.querySelector('.toc-area').style.display = 'none';
+    doc.sidebar.querySelector('.search-area').style.display = 'none';
+    doc.sidebar.querySelector('.notes-area').style.display = 'block';
+    renderNotesList(doc);
+    doc.sidebar.querySelector('.note-search-input')?.focus();
+  }
+
+  function renderNotesList(doc) {
+    if (!doc?.sidebar) return;
+    const list = doc.sidebar.querySelector('.notes-list');
+    if (!list) return;
+    const q = (doc.sidebar.querySelector('.note-search-input')?.value || '').trim().toLowerCase();
+    const notes = getDocNotes(doc).filter(n => {
+      if (!q) return true;
+      return [n.note, n.text, String(n.pageIndex + 1), n.type === 'highlight' ? '高亮' : '便签'].join(' ').toLowerCase().includes(q);
+    }).sort((a, b) => (a.pageIndex - b.pageIndex) || (a.createdAt - b.createdAt));
+    list.innerHTML = '';
+    if (!notes.length) {
+      list.innerHTML = `<div style="padding:10px;color:var(--text-muted);line-height:1.6;">暂无批注。可先选中文本点击“文本高亮”，或给当前页添加“页面便签”。</div>`;
+      return;
+    }
+    const frag = document.createDocumentFragment();
+    for (const note of notes) {
+      const item = document.createElement('div');
+      item.className = 'note-item';
+      const type = note.type === 'highlight' ? '高亮' : '便签';
+      const body = note.note || note.text || '(无内容)';
+      const colorDot = note.type === 'highlight' ? `<i class="note-color-dot" style="background:${HIGHLIGHT_DOT_COLORS[normalizeHighlightColor(note.color)]}"></i>` : '';
+      item.innerHTML = `
+        <div class="note-meta"><span class="note-type">${colorDot}${type}</span><span>P.${note.pageIndex + 1}</span></div>
+        <div class="note-title">${escapeHtml(shortText(note.text || note.note || type, 80))}</div>
+        <div class="note-body">${escapeHtml(shortText(body, 160))}</div>
+        <div class="note-actions-row"><button data-action="jump">跳转</button><button data-action="edit">编辑</button><button data-action="delete">删除</button></div>`;
+      item.onclick = e => {
+        const action = e.target?.dataset?.action || 'jump';
+        e.stopPropagation();
+        if (action === 'delete') {
+          if (confirm('删除这条批注吗？')) deleteNote(note.id);
+          return;
+        }
+        if (action === 'edit') {
+          editExistingNote(note.id);
+          return;
+        }
+        saveNavState();
+        scrollDocToPage(doc, note.pageIndex, 0, true);
+      };
+      frag.appendChild(item);
+    }
+    list.appendChild(frag);
+  }
+
+  async function editExistingNote(noteId) {
+    const note = app.notes.find(n => n.id === noteId);
+    if (!note) return;
+    const result = await openNoteEditor({
+      title: note.type === 'highlight' ? '编辑高亮笔记' : '编辑页面便签',
+      hint: `${note.docName || '当前文档'} · 第 ${note.pageIndex + 1} 页${note.text ? ` · 原文：${shortText(note.text, 90)}` : ''}`,
+      text: note.note || '',
+      allowDelete: true
+    });
+    if (result.action === 'delete') {
+      deleteNote(note.id);
+      toast('批注已删除。');
+    } else if (result.action === 'save') {
+      upsertNote({ ...note, note: result.text.trim() });
+      toast('批注已保存。');
+    }
+  }
+
+  async function addOrEditPageNote(doc = getActiveDoc()) {
+    if (!doc) { toast('请先打开并加载 PDF。'); return; }
+    app.userActiveDocId = doc.id;
+    const pageIndex = getCurrentPageIndex(doc);
+    const key = docKey(doc);
+    const existing = app.notes.find(n => n.type === 'page-note' && noteMatchesDoc(n, doc) && n.pageIndex === pageIndex);
+    const result = await openNoteEditor({
+      title: existing ? '编辑页面便签' : '添加页面便签',
+      hint: `${doc.file.name} · 第 ${pageIndex + 1} 页`,
+      text: existing?.note || '',
+      allowDelete: !!existing
+    });
+    if (result.action === 'delete' && existing) {
+      deleteNote(existing.id);
+      toast('页面便签已删除。');
+      return;
+    }
+    if (result.action !== 'save') return;
+    const noteText = result.text.trim();
+    if (!noteText && !existing) return;
+    upsertNote({
+      id: existing?.id || makeNoteId(),
+      type: 'page-note',
+      docKey: key,
+      docName: doc.file.name,
+      docSize: doc.file.size || 0,
+      docLastModified: doc.file.lastModified || 0,
+      pageIndex,
+      text: '',
+      note: noteText,
+      rects: [],
+      createdAt: existing?.createdAt || Date.now()
+    });
+    toast('页面便签已保存。');
+    openNotesTab(doc);
+  }
+
+  function rectIntersectsPage(rect, pageBox) {
+    return rect.right > pageBox.left && rect.left < pageBox.right && rect.bottom > pageBox.top && rect.top < pageBox.bottom;
+  }
+
+  async function addHighlightFromSelection(doc = getActiveDoc()) {
+    if (!doc) { toast('请先打开并加载 PDF。'); return; }
+    const sel = window.getSelection();
+    const selectedText = String(sel?.toString() || '').trim();
+    if (!sel || sel.rangeCount === 0 || !selectedText) {
+      toast('请先在 PDF 文本上选中要高亮的内容。');
+      return;
+    }
+    const range = sel.getRangeAt(0);
+    if (!doc.wrapper.contains(range.commonAncestorContainer)) {
+      toast('选中的文本不在当前文档中。');
+      return;
+    }
+    const rawRects = Array.from(range.getClientRects()).filter(r => r.width > 1 && r.height > 1);
+    const rects = [];
+    for (const r of rawRects) {
+      for (let i = 0; i < doc.pages.length; i++) {
+        const pageEl = doc.pages[i].el;
+        const box = pageEl.getBoundingClientRect();
+        if (!rectIntersectsPage(r, box)) continue;
+        const x1 = clamp((Math.max(r.left, box.left) - box.left) / Math.max(1, box.width), 0, 1);
+        const y1 = clamp((Math.max(r.top, box.top) - box.top) / Math.max(1, box.height), 0, 1);
+        const x2 = clamp((Math.min(r.right, box.right) - box.left) / Math.max(1, box.width), 0, 1);
+        const y2 = clamp((Math.min(r.bottom, box.bottom) - box.top) / Math.max(1, box.height), 0, 1);
+        if (x2 - x1 > 0.002 && y2 - y1 > 0.002) rects.push({ pageIndex: i, x: x1, y: y1, w: x2 - x1, h: y2 - y1 });
+      }
+    }
+    if (!rects.length) {
+      toast('没有取得有效的文本位置；请确认页面文字层已加载后再选中。', 2600);
+      return;
+    }
+    const firstPage = rects.reduce((min, r) => Math.min(min, r.pageIndex), rects[0].pageIndex);
+    const result = await openNoteEditor({
+      title: '添加文本高亮',
+      hint: `${doc.file.name} · 第 ${firstPage + 1} 页 · 原文：${shortText(selectedText, 120)}`,
+      text: '',
+      allowDelete: false
+    });
+    if (result.action !== 'save') return;
+    upsertNote({
+      id: makeNoteId(),
+      type: 'highlight',
+      docKey: docKey(doc),
+      docName: doc.file.name,
+      docSize: doc.file.size || 0,
+      docLastModified: doc.file.lastModified || 0,
+      pageIndex: firstPage,
+      text: selectedText,
+      note: result.text.trim(),
+      color: app.highlightColor,
+      rects,
+      createdAt: Date.now()
+    });
+    sel.removeAllRanges();
+    toast('高亮已保存。');
+    openNotesTab(doc);
+  }
+
+  function renderStoredNotesForPage(doc, pageIndex) {
+    const pageState = doc.pages[pageIndex];
+    if (!pageState?.el || !pageState.loaded) return;
+    pageState.el.querySelectorAll('.note-highlight-layer,.page-note-marker').forEach(el => el.remove());
+    const pageNotes = getDocNotes(doc).filter(n => n.pageIndex === pageIndex || n.rects?.some(r => r.pageIndex === pageIndex));
+    if (!pageNotes.length) return;
+    const layer = document.createElement('div');
+    layer.className = 'note-highlight-layer';
+    let hasHighlight = false;
+    for (const note of pageNotes) {
+      if (note.type !== 'highlight') continue;
+      for (const r of note.rects.filter(x => x.pageIndex === pageIndex)) {
+        const div = document.createElement('div');
+        div.className = 'note-highlight';
+        div.title = note.note || note.text || '高亮';
+        div.style.background = getHighlightColorValue(note.color);
+        div.style.left = `${r.x * 100}%`;
+        div.style.top = `${r.y * 100}%`;
+        div.style.width = `${r.w * 100}%`;
+        div.style.height = `${r.h * 100}%`;
+        div.onclick = e => { e.preventDefault(); e.stopPropagation(); editExistingNote(note.id); };
+        layer.appendChild(div);
+        hasHighlight = true;
+      }
+    }
+    if (hasHighlight) pageState.el.appendChild(layer);
+    const pageNote = pageNotes.find(n => n.type === 'page-note' && n.pageIndex === pageIndex);
+    if (pageNote) {
+      const marker = document.createElement('button');
+      marker.type = 'button';
+      marker.className = 'page-note-marker';
+      marker.textContent = '笔记';
+      marker.title = pageNote.note || '页面便签';
+      marker.onclick = e => { e.preventDefault(); e.stopPropagation(); editExistingNote(pageNote.id); };
+      pageState.el.appendChild(marker);
+    }
+  }
+
+
+  function saveNavState() {
+    if (!app.docs.length || app.suppressHistory) return;
+    const state = app.docs.map(doc => doc.scroller.scrollTop);
+    const current = app.navHistory[app.navIndex];
+    if (current && JSON.stringify(current) === JSON.stringify(state)) return;
+    if (app.navIndex < app.navHistory.length - 1) app.navHistory = app.navHistory.slice(0, app.navIndex + 1);
+    app.navHistory.push(state);
+    if (app.navHistory.length > 40) app.navHistory.shift();
+    else app.navIndex++;
+    updateHistoryButtons();
+  }
+
+  function restoreNavState(state) {
+    app.suppressHistory = true;
+    state.forEach((top, i) => { if (app.docs[i]) app.docs[i].scroller.scrollTop = top; });
+    updateAllIndicators();
+    scheduleRenderAll();
+    scheduleWorkspaceSave();
+    updateHistoryButtons();
+    setTimeout(() => { app.suppressHistory = false; }, 300);
+  }
+
+  function updateHistoryButtons() {
+    els.btnHistoryBack.disabled = app.navIndex <= 0;
+    els.btnHistoryForward.disabled = app.navIndex >= app.navHistory.length - 1;
+  }
+
+  async function clearWorkspace(removeStorage = true) {
+    app.files = [];
+    await destroyAllDocs();
+    app.anchors = [];
+    app.navHistory = [];
+    app.navIndex = -1;
+    app.userActiveDocId = null;
+    if (removeStorage) app.notes = [];
+    updateFileHint();
+    updateHistoryButtons();
+    updateMemoryStats();
+    if (removeStorage) localStorage.removeItem(WORKSPACE_KEY);
+    showEmptyState();
+  }
+
+  function resetView() {
+    if (!app.docs.length) return;
+    applyGlobalZoom(90);
+    app.anchors = [new Array(app.docs.length).fill(0)];
+    app.syncEnabled = true;
+    updateSyncButton();
+    app.docs.forEach(doc => scrollDocToPage(doc, 0, 0, false));
+    updateAllIndicators();
+    scheduleWorkspaceSave();
+    saveNavState();
+  }
+
+  async function saveProjectManually() {
+    if (!app.docs.length) {
+      toast('当前没有可保存的 PDF。');
+      return;
+    }
+    app.projectActive = true;
+    app.autoSaveProject = !!els.chkAutoSave.checked;
+    app.savePdfCopy = !!els.chkSavePdfCopy.checked;
+    saveWorkspaceNow();
+    await writePersistentWorkspaceFull({ silent: false, saveFiles: app.savePdfCopy });
+    await refreshPersistentHint();
+  }
+
+  function switchToTemporaryMode() {
+    app.projectActive = false;
+    updatePersistentButtons();
+    toast('已切换为临时阅读；不会继续自动保存到项目数据库。');
+  }
+
+  function closeToolbarMenus(exceptMenu = null) {
+    document.querySelectorAll('.toolbar-menu[open]').forEach(menu => {
+      if (menu !== exceptMenu) menu.removeAttribute('open');
+    });
+  }
+
+  document.addEventListener('toggle', e => {
+    const menu = e.target;
+    if (menu instanceof HTMLDetailsElement && menu.classList.contains('toolbar-menu') && menu.open) {
+      closeToolbarMenus(menu);
+    }
+  }, true);
+
+  document.addEventListener('pointerdown', e => {
+    const menu = e.target.closest?.('.toolbar-menu');
+    if (!menu) {
+      closeToolbarMenus();
+      return;
+    }
+    if (e.target.closest('summary')) closeToolbarMenus(menu);
+  }, true);
+
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') closeToolbarMenus();
+  }, true);
+
+  // Extra delegated close handler: capture-phase, independent of document order.
+  els.container.addEventListener('click', async e => {
+    const closeButton = e.target.closest?.('.btn-close');
+    if (!closeButton) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const wrapper = closeButton.closest('.panel-wrapper');
+    const doc = app.docs.find(d => d.wrapper === wrapper);
+    if (doc) await removeDocumentByDoc(doc, { confirmClose: false });
+  }, true);
+
+  // Global controls
+  els.btnAddFile.onclick = () => els.fileInput.click();
+  els.fileInput.onchange = e => {
+    const picked = Array.from(e.target.files || []).filter(f => /\.pdf$/i.test(f.name) || f.type === 'application/pdf');
+    const freeSlots = Math.max(0, MAX_DOCS - app.files.length);
+    const accepted = picked.slice(0, freeSlots);
+    for (const f of accepted) app.files.push(f);
+    const skipped = Math.max(0, picked.length - accepted.length);
+    e.target.value = '';
+    updateFileHint();
+    if (skipped > 0) toast(`已加入 ${accepted.length} 个，最多同时打开 ${MAX_DOCS} 个 PDF。`);
+    else if (accepted.length > 0) toast(`已加入 ${accepted.length} 个 PDF。`);
+  };
+
+  els.btnLoad.onclick = () => loadFiles();
+  els.btnClear.onclick = () => clearWorkspace(true);
+  els.btnSaveProject.onclick = saveProjectManually;
+  els.btnExportProject.onclick = exportProjectFile;
+  els.btnImportProject.onclick = () => els.projectFileInput.click();
+  els.projectFileInput.onchange = e => importProjectFile(e.target.files?.[0]);
+  els.btnRestorePersist.onclick = restorePersistentWorkspace;
+  els.btnTempMode.onclick = switchToTemporaryMode;
+  els.chkAutoSave.onchange = () => { app.autoSaveProject = !!els.chkAutoSave.checked; saveWorkspaceNow(); updatePersistentButtons(); if (app.projectActive && app.autoSaveProject) schedulePersistentFullSave({ silent: true }); };
+  els.chkSavePdfCopy.onchange = () => { app.savePdfCopy = !!els.chkSavePdfCopy.checked; saveWorkspaceNow(); updatePersistentButtons(); };
+  els.btnClearPersist.onclick = async () => {
+    if (!confirm('确定删除浏览器里的本机暂存项目吗？当前打开的文档也会清空。')) return;
+    await clearPersistentStorage();
+    await clearWorkspace(true);
+    toast('已删除本机暂存项目数据。');
+  };
+  els.highlightColorSwatches.forEach(btn => {
+    btn.onclick = e => {
+      e.preventDefault();
+      setHighlightColor(btn.dataset.color);
+      toast(`高亮颜色已切换：${btn.title.replace('高亮', '') || '当前颜色'}`, 1200);
+    };
+  });
+  setHighlightColor(app.highlightColor);
+
+  els.btnToggleSync.onclick = () => { app.syncEnabled = !app.syncEnabled; updateSyncButton(); scheduleWorkspaceSave(); };
+  els.btnAnchor.onclick = addAnchor;
+  els.btnPageNote.onclick = () => addOrEditPageNote(getActiveDoc());
+  els.btnHighlight.onclick = () => addHighlightFromSelection(getActiveDoc());
+  els.btnShowNotes.onclick = () => openNotesTab(getActiveDoc());
+  els.btnResetView.onclick = resetView;
+  els.btnHistoryBack.onclick = () => { if (app.navIndex > 0) restoreNavState(app.navHistory[--app.navIndex]); };
+  els.btnHistoryForward.onclick = () => { if (app.navIndex < app.navHistory.length - 1) restoreNavState(app.navHistory[++app.navIndex]); };
+  els.btnGlobalZoomOut.onclick = () => applyGlobalZoom(parseInt(els.globalZoomInput.value, 10) - 10);
+  els.btnGlobalZoomIn.onclick = () => applyGlobalZoom(parseInt(els.globalZoomInput.value, 10) + 10);
+  els.globalZoomInput.addEventListener('change', () => applyGlobalZoom(els.globalZoomInput.value));
+  els.globalZoomInput.addEventListener('keydown', e => { if (e.key === 'Enter') { e.currentTarget.blur(); applyGlobalZoom(e.currentTarget.value); } });
+  els.themeSelect.onchange = e => { document.body.className = `theme-${e.target.value}`; scheduleWorkspaceSave(); };
+
+  document.addEventListener('keydown', e => {
+    const tag = document.activeElement?.tagName;
+    if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (e.key === '=' || e.key === '+') els.btnGlobalZoomIn.click();
+    if (e.key === '-') els.btnGlobalZoomOut.click();
+    if (e.key === 'Home') els.btnResetView.click();
+    if (e.altKey && e.key === 'ArrowLeft') els.btnHistoryBack.click();
+    if (e.altKey && e.key === 'ArrowRight') els.btnHistoryForward.click();
+  });
+
+  window.addEventListener('resize', () => {
+    clearTimeout(app.resizeTimer);
+    app.resizeTimer = setTimeout(() => {
+      const states = app.docs.map(getPanelScrollState);
+      applyAllPanelWidths();
+      app.docs.forEach(invalidatePagesForZoom);
+      app.docs.forEach((doc, i) => restorePanelScrollState(doc, states[i]));
+      scheduleRenderAll();
+    }, 180);
+  });
+
+  window.addEventListener('beforeunload', () => {
+    saveWorkspaceNow();
+    app.docs.forEach(unloadAllPages);
+  });
+
+  loadWorkspaceMeta();
+  refreshPersistentHint();
+  updateSyncButton();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,757 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ReaderProj 解构工具</title>
+<style>
+  :root {
+    --bg: #f6f8fb;
+    --surface: #ffffff;
+    --surface2: #f9fbff;
+    --text: #111827;
+    --muted: #64748b;
+    --border: #e5e7eb;
+    --accent: #2563eb;
+    --accent2: #e8f0ff;
+    --danger: #dc2626;
+    --shadow: 0 20px 55px rgba(15, 23, 42, .08);
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    background: radial-gradient(circle at top left, #eef5ff 0, transparent 32rem), var(--bg);
+    color: var(--text);
+  }
+  .app {
+    width: min(1120px, calc(100vw - 36px));
+    margin: 32px auto;
+  }
+  .hero {
+    background: rgba(255,255,255,.82);
+    backdrop-filter: blur(14px);
+    border: 1px solid var(--border);
+    border-radius: 28px;
+    padding: 28px;
+    box-shadow: var(--shadow);
+  }
+  h1 {
+    margin: 0 0 8px;
+    font-size: 28px;
+    letter-spacing: -.04em;
+  }
+  .sub {
+    margin: 0;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .drop {
+    margin-top: 22px;
+    border: 1.5px dashed #b8c7dc;
+    background: linear-gradient(180deg, #ffffff, #f8fbff);
+    border-radius: 22px;
+    padding: 28px;
+    text-align: center;
+    transition: .16s ease;
+  }
+  .drop.drag {
+    border-color: var(--accent);
+    background: var(--accent2);
+  }
+  .drop strong { display: block; margin-bottom: 6px; }
+  input[type=file] { display: none; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  button, .file-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 36px;
+    padding: 0 15px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: #fff;
+    color: var(--text);
+    font-size: 13px;
+    cursor: pointer;
+    text-decoration: none;
+    transition: .14s ease;
+    user-select: none;
+  }
+  button:hover, .file-btn:hover { border-color: #cbd5e1; background: #f8fafc; }
+  button.primary, .file-btn.primary {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+  }
+  button.primary:hover, .file-btn.primary:hover { filter: brightness(.98); }
+  button:disabled {
+    opacity: .42;
+    cursor: not-allowed;
+  }
+  .grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+    margin-top: 18px;
+  }
+  @media (min-width: 900px) {
+    .grid { grid-template-columns: 390px 1fr; }
+  }
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .05);
+    overflow: hidden;
+  }
+  .card h2 {
+    font-size: 15px;
+    margin: 0;
+    padding: 15px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface2);
+  }
+  .card-body { padding: 16px 18px; }
+  .kv {
+    display: grid;
+    grid-template-columns: 110px 1fr;
+    gap: 9px 12px;
+    font-size: 13px;
+  }
+  .k { color: var(--muted); }
+  .v { min-width: 0; overflow-wrap: anywhere; }
+  .hint {
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1.7;
+  }
+  .warn {
+    border: 1px solid #fed7aa;
+    background: #fff7ed;
+    color: #9a3412;
+    padding: 12px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-top: 12px;
+  }
+  .ok {
+    border: 1px solid #bbf7d0;
+    background: #f0fdf4;
+    color: #166534;
+    padding: 12px 14px;
+    border-radius: 16px;
+    font-size: 13px;
+    line-height: 1.6;
+    margin-top: 12px;
+  }
+  .file-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  .file-item {
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 12px;
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    background: #fff;
+  }
+  .file-name { font-size: 13px; font-weight: 650; overflow-wrap: anywhere; }
+  .file-meta { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    height: 24px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: var(--accent2);
+    color: #1d4ed8;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    background: #0f172a;
+    color: #dbeafe;
+    padding: 14px;
+    border-radius: 18px;
+    max-height: 300px;
+    overflow: auto;
+    font-size: 12px;
+    line-height: 1.55;
+  }
+  .footer {
+    margin: 22px 0 0;
+    color: var(--muted);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="hero">
+    <h1>ReaderProj 解构工具</h1>
+    <p class="sub">
+      读取 Parallel PDF Reader 导出的 <code>.readerproj</code> 项目文件，并解构出 PDF、副本、工作区 JSON、锚点、笔记、高亮批注和 Markdown 笔记。
+      所有处理都在本机浏览器完成，不上传文件。
+    </p>
+
+    <div id="drop" class="drop">
+      <strong>选择或拖入 .readerproj 文件</strong>
+      <span class="hint">如果项目文件导出时勾选了“保存PDF”，这里可以提取出 PDF；否则只能提取锚点、进度、笔记等数据。</span>
+      <div class="row" style="justify-content:center;margin-top:16px;">
+        <label class="file-btn primary" for="fileInput">选择项目文件</label>
+        <input id="fileInput" type="file" accept=".readerproj,.prproj,.json,application/json">
+      </div>
+    </div>
+
+    <div id="actions" class="row" style="margin-top:18px;display:none;">
+      <button id="btnZip" class="primary">导出全部为 ZIP</button>
+      <button id="btnFolder">解构到文件夹</button>
+      <button id="btnPdfs">只提取 PDF</button>
+      <button id="btnWorkspace">导出 workspace.json</button>
+      <button id="btnNotesJson">导出 notes.json</button>
+      <button id="btnNotesMd">导出 notes.md</button>
+      <button id="btnReset">清空</button>
+    </div>
+  </div>
+
+  <div id="result" class="grid" style="display:none;">
+    <section class="card">
+      <h2>项目概要</h2>
+      <div class="card-body">
+        <div id="summary" class="kv"></div>
+        <div id="statusBox"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>可解构内容</h2>
+      <div class="card-body">
+        <div id="fileList" class="file-list"></div>
+      </div>
+    </section>
+
+    <section class="card" style="grid-column:1/-1;">
+      <h2>数据预览</h2>
+      <div class="card-body">
+        <pre id="preview">尚未读取项目文件。</pre>
+      </div>
+    </section>
+  </div>
+
+  <p class="footer">
+    提示：普通网页不能自动写入任意目录。“解构到文件夹”需要浏览器支持目录选择接口；不支持时请使用 ZIP 导出。
+  </p>
+</div>
+
+<script>
+(() => {
+  const els = {
+    fileInput: document.getElementById('fileInput'),
+    drop: document.getElementById('drop'),
+    actions: document.getElementById('actions'),
+    result: document.getElementById('result'),
+    summary: document.getElementById('summary'),
+    statusBox: document.getElementById('statusBox'),
+    fileList: document.getElementById('fileList'),
+    preview: document.getElementById('preview'),
+    btnZip: document.getElementById('btnZip'),
+    btnFolder: document.getElementById('btnFolder'),
+    btnPdfs: document.getElementById('btnPdfs'),
+    btnWorkspace: document.getElementById('btnWorkspace'),
+    btnNotesJson: document.getElementById('btnNotesJson'),
+    btnNotesMd: document.getElementById('btnNotesMd'),
+    btnReset: document.getElementById('btnReset')
+  };
+
+  let current = null;
+
+  function sanitizeName(name, fallback = 'file') {
+    return String(name || fallback)
+      .replace(/[\\/:*?"<>|]+/g, '_')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 160) || fallback;
+  }
+
+  function formatBytes(n) {
+    n = Number(n || 0);
+    if (n < 1024) return `${n} B`;
+    if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+    if (n < 1024 * 1024 * 1024) return `${(n / 1024 / 1024).toFixed(1)} MB`;
+    return `${(n / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  }
+
+  function utf8Bytes(text) {
+    return new TextEncoder().encode(String(text));
+  }
+
+  function base64ToBytes(base64) {
+    const clean = String(base64 || '').replace(/^data:[^,]+,/, '').replace(/\s+/g, '');
+    const binary = atob(clean);
+    const out = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) out[i] = binary.charCodeAt(i);
+    return out;
+  }
+
+  function jsonBytes(obj) {
+    return utf8Bytes(JSON.stringify(obj, null, 2));
+  }
+
+  function downloadBlob(blob, fileName) {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1400);
+  }
+
+  async function saveBlob(blob, fileName, description = '文件') {
+    if (typeof window.showSaveFilePicker === 'function') {
+      try {
+        const ext = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')) : '';
+        const accept = ext === '.zip' ? {'application/zip': ['.zip']} :
+          ext === '.pdf' ? {'application/pdf': ['.pdf']} :
+          ext === '.md' ? {'text/markdown': ['.md']} :
+          {'application/json': ['.json']};
+        const handle = await window.showSaveFilePicker({
+          suggestedName: fileName,
+          types: [{ description, accept }]
+        });
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        return;
+      } catch (err) {
+        if (err && err.name === 'AbortError') return;
+      }
+    }
+    downloadBlob(blob, fileName);
+  }
+
+  function normalizeBundle(raw, sourceName = 'project.readerproj') {
+    const bundle = JSON.parse(raw);
+    if (!bundle || typeof bundle !== 'object') throw new Error('不是合法 JSON 文件。');
+    if (bundle.format !== 'parallel-reader-project' || !bundle.workspace) {
+      throw new Error('这不是 Parallel Reader 的 .readerproj 项目文件。');
+    }
+    const workspace = bundle.workspace || {};
+    const files = Array.isArray(bundle.files) ? bundle.files.slice() : [];
+    files.sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+
+    const embeddedFiles = files.filter(f => f && f.data && f.encoding === 'base64');
+    const notes = Array.isArray(workspace.notes) ? workspace.notes :
+      Array.isArray(workspace.annotations) ? workspace.annotations : [];
+    const annotations = Array.isArray(workspace.annotations) ? workspace.annotations :
+      notes.filter(n => n && n.type === 'highlight');
+    const anchors = Array.isArray(workspace.anchors) ? workspace.anchors : [];
+
+    return {
+      sourceName,
+      bundle,
+      workspace,
+      files,
+      embeddedFiles,
+      notes,
+      annotations,
+      anchors
+    };
+  }
+
+  function noteToText(note, idx) {
+    const type = note.type === 'highlight' ? '文本高亮' : '页面便签';
+    const doc = note.docName || note.fileName || note.name || note.docId || '未知文档';
+    const page = note.page || note.pageNum || note.pageIndex + 1 || '';
+    const color = note.color || '';
+    const selected = note.text || note.selectedText || note.quote || '';
+    const body = note.note || note.content || note.comment || '';
+    const created = note.createdAt ? new Date(note.createdAt).toLocaleString() : '';
+    return [
+      `## ${idx + 1}. ${type}`,
+      '',
+      `- 文档：${doc}`,
+      page ? `- 页码：${page}` : null,
+      color ? `- 颜色：${color}` : null,
+      created ? `- 创建时间：${created}` : null,
+      '',
+      selected ? `> ${String(selected).replace(/\n/g, '\n> ')}` : '',
+      '',
+      body ? String(body) : '',
+      ''
+    ].filter(x => x !== null).join('\n');
+  }
+
+  function buildNotesMarkdown(data) {
+    const title = data.sourceName || 'Parallel Reader Project';
+    const lines = [
+      `# ${title} 笔记与批注`,
+      '',
+      `导出时间：${new Date().toLocaleString()}`,
+      '',
+      `笔记数量：${data.notes.length}`,
+      '',
+      '---',
+      ''
+    ];
+    if (!data.notes.length) {
+      lines.push('暂无笔记或批注。', '');
+    } else {
+      data.notes.forEach((note, idx) => lines.push(noteToText(note, idx), ''));
+    }
+    return lines.join('\n');
+  }
+
+  function buildManifest(data) {
+    return {
+      extractedAt: new Date().toISOString(),
+      sourceName: data.sourceName,
+      format: data.bundle.format,
+      version: data.bundle.version,
+      app: data.bundle.app,
+      exportedAt: data.bundle.exportedAt,
+      filesEmbedded: !!data.bundle.filesEmbedded,
+      counts: {
+        files: data.files.length,
+        embeddedFiles: data.embeddedFiles.length,
+        anchors: data.anchors.length,
+        notes: data.notes.length,
+        annotations: data.annotations.length
+      },
+      files: data.files.map(({ data, ...f }) => ({
+        ...f,
+        hasEmbeddedData: !!data
+      }))
+    };
+  }
+
+  function getExtractionEntries(data) {
+    const entries = [];
+    entries.push({
+      name: 'data/manifest.json',
+      bytes: jsonBytes(buildManifest(data))
+    });
+    entries.push({
+      name: 'data/workspace.json',
+      bytes: jsonBytes(data.workspace)
+    });
+    entries.push({
+      name: 'data/anchors.json',
+      bytes: jsonBytes(data.anchors)
+    });
+    entries.push({
+      name: 'data/notes.json',
+      bytes: jsonBytes(data.notes)
+    });
+    entries.push({
+      name: 'data/annotations.json',
+      bytes: jsonBytes(data.annotations)
+    });
+    entries.push({
+      name: 'notes/notes.md',
+      bytes: utf8Bytes(buildNotesMarkdown(data))
+    });
+
+    if (data.embeddedFiles.length) {
+      data.embeddedFiles.forEach((f, idx) => {
+        const order = String(idx + 1).padStart(2, '0');
+        const name = sanitizeName(f.name || `document_${order}.pdf`, `document_${order}.pdf`);
+        const finalName = name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf`;
+        entries.push({
+          name: `pdf/${order}_${finalName}`,
+          bytes: base64ToBytes(f.data)
+        });
+      });
+    } else {
+      entries.push({
+        name: 'pdf/README_NO_EMBEDDED_PDF.txt',
+        bytes: utf8Bytes('这个 readerproj 文件没有包含 PDF 副本。只能解构出锚点、阅读进度、笔记和批注数据。若需要解出 PDF，请在原阅读器导出项目时勾选“保存PDF”。\n')
+      });
+    }
+
+    return entries;
+  }
+
+  // Minimal uncompressed ZIP writer.
+  const crcTable = (() => {
+    const table = new Uint32Array(256);
+    for (let n = 0; n < 256; n++) {
+      let c = n;
+      for (let k = 0; k < 8; k++) c = (c & 1) ? (0xedb88320 ^ (c >>> 1)) : (c >>> 1);
+      table[n] = c >>> 0;
+    }
+    return table;
+  })();
+
+  function crc32(bytes) {
+    let c = 0xffffffff;
+    for (let i = 0; i < bytes.length; i++) c = crcTable[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+    return (c ^ 0xffffffff) >>> 0;
+  }
+
+  function writeU16(arr, offset, value) {
+    arr[offset] = value & 0xff;
+    arr[offset + 1] = (value >>> 8) & 0xff;
+  }
+
+  function writeU32(arr, offset, value) {
+    arr[offset] = value & 0xff;
+    arr[offset + 1] = (value >>> 8) & 0xff;
+    arr[offset + 2] = (value >>> 16) & 0xff;
+    arr[offset + 3] = (value >>> 24) & 0xff;
+  }
+
+  function concatParts(parts) {
+    const total = parts.reduce((sum, p) => sum + p.length, 0);
+    const out = new Uint8Array(total);
+    let offset = 0;
+    for (const p of parts) {
+      out.set(p, offset);
+      offset += p.length;
+    }
+    return out;
+  }
+
+  function dosDateTime(date = new Date()) {
+    const time = (date.getHours() << 11) | (date.getMinutes() << 5) | Math.floor(date.getSeconds() / 2);
+    const dosDate = ((date.getFullYear() - 1980) << 9) | ((date.getMonth() + 1) << 5) | date.getDate();
+    return { time, date: dosDate };
+  }
+
+  function createZip(entries) {
+    const localParts = [];
+    const centralParts = [];
+    let offset = 0;
+    const dt = dosDateTime();
+
+    for (const entry of entries) {
+      const nameBytes = utf8Bytes(entry.name.replace(/^\/+/, ''));
+      const data = entry.bytes instanceof Uint8Array ? entry.bytes : new Uint8Array(entry.bytes);
+      const crc = crc32(data);
+      const local = new Uint8Array(30 + nameBytes.length);
+      writeU32(local, 0, 0x04034b50);
+      writeU16(local, 4, 20);
+      writeU16(local, 6, 0x0800); // UTF-8
+      writeU16(local, 8, 0); // store
+      writeU16(local, 10, dt.time);
+      writeU16(local, 12, dt.date);
+      writeU32(local, 14, crc);
+      writeU32(local, 18, data.length);
+      writeU32(local, 22, data.length);
+      writeU16(local, 26, nameBytes.length);
+      writeU16(local, 28, 0);
+      local.set(nameBytes, 30);
+      localParts.push(local, data);
+
+      const central = new Uint8Array(46 + nameBytes.length);
+      writeU32(central, 0, 0x02014b50);
+      writeU16(central, 4, 20);
+      writeU16(central, 6, 20);
+      writeU16(central, 8, 0x0800);
+      writeU16(central, 10, 0);
+      writeU16(central, 12, dt.time);
+      writeU16(central, 14, dt.date);
+      writeU32(central, 16, crc);
+      writeU32(central, 20, data.length);
+      writeU32(central, 24, data.length);
+      writeU16(central, 28, nameBytes.length);
+      writeU16(central, 30, 0);
+      writeU16(central, 32, 0);
+      writeU16(central, 34, 0);
+      writeU16(central, 36, 0);
+      writeU32(central, 38, 0);
+      writeU32(central, 42, offset);
+      central.set(nameBytes, 46);
+      centralParts.push(central);
+
+      offset += local.length + data.length;
+    }
+
+    const centralDir = concatParts(centralParts);
+    const end = new Uint8Array(22);
+    writeU32(end, 0, 0x06054b50);
+    writeU16(end, 4, 0);
+    writeU16(end, 6, 0);
+    writeU16(end, 8, entries.length);
+    writeU16(end, 10, entries.length);
+    writeU32(end, 12, centralDir.length);
+    writeU32(end, 16, offset);
+    writeU16(end, 20, 0);
+
+    return concatParts([...localParts, centralDir, end]);
+  }
+
+  function render(data) {
+    const totalEmbeddedBytes = data.embeddedFiles.reduce((sum, f) => sum + Number(f.size || 0), 0);
+    const rows = [
+      ['源文件', data.sourceName],
+      ['格式', data.bundle.format],
+      ['版本', data.bundle.version || '-'],
+      ['导出时间', data.bundle.exportedAt || '-'],
+      ['文档数量', data.files.length],
+      ['包含 PDF 副本', data.embeddedFiles.length ? `是，${data.embeddedFiles.length} 个` : '否'],
+      ['PDF 总大小', data.embeddedFiles.length ? formatBytes(totalEmbeddedBytes) : '-'],
+      ['锚点数量', data.anchors.length],
+      ['笔记数量', data.notes.length],
+      ['高亮数量', data.annotations.length]
+    ];
+    els.summary.innerHTML = rows.map(([k, v]) => `<div class="k">${k}</div><div class="v">${escapeHtml(String(v))}</div>`).join('');
+
+    els.statusBox.innerHTML = data.embeddedFiles.length
+      ? `<div class="ok">该项目包含 PDF 副本，可以解构出 PDF 文件和全部项目数据。</div>`
+      : `<div class="warn">该项目没有嵌入 PDF 副本。可以解构出 workspace、锚点、笔记、高亮等数据，但不能还原 PDF 文件本体。</div>`;
+
+    if (data.files.length) {
+      els.fileList.innerHTML = data.files.map((f, idx) => {
+        const hasData = !!(f.data && f.encoding === 'base64');
+        return `<div class="file-item">
+          <div>
+            <div class="file-name">${escapeHtml(f.name || `document_${idx + 1}.pdf`)}</div>
+            <div class="file-meta">顺序 ${idx + 1} · ${escapeHtml(f.type || 'application/pdf')} · ${formatBytes(f.size || 0)}</div>
+          </div>
+          <span class="pill">${hasData ? '可提取 PDF' : '仅元数据'}</span>
+        </div>`;
+      }).join('');
+    } else {
+      els.fileList.innerHTML = `<div class="hint">项目文件中没有 files 列表。</div>`;
+    }
+
+    els.preview.textContent = JSON.stringify({
+      manifest: buildManifest(data),
+      workspaceSample: {
+        fileNames: data.workspace.fileNames,
+        theme: data.workspace.theme,
+        syncEnabled: data.workspace.syncEnabled,
+        anchors: data.workspace.anchors,
+        docStates: data.workspace.docStates,
+        notesCount: data.notes.length
+      }
+    }, null, 2);
+
+    els.result.style.display = 'grid';
+    els.actions.style.display = 'flex';
+    els.btnFolder.disabled = typeof window.showDirectoryPicker !== 'function';
+    els.btnPdfs.disabled = !data.embeddedFiles.length;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[ch]));
+  }
+
+  async function readProjectFile(file) {
+    if (!file) return;
+    try {
+      els.preview.textContent = '正在读取项目文件...';
+      const raw = await file.text();
+      current = normalizeBundle(raw, file.name);
+      render(current);
+    } catch (err) {
+      current = null;
+      els.result.style.display = 'grid';
+      els.actions.style.display = 'none';
+      els.summary.innerHTML = '';
+      els.fileList.innerHTML = '';
+      els.statusBox.innerHTML = `<div class="warn">读取失败：${escapeHtml(err.message || String(err))}</div>`;
+      els.preview.textContent = String(err && err.stack || err);
+    }
+  }
+
+  async function exportZip() {
+    if (!current) return;
+    const entries = getExtractionEntries(current);
+    const zip = createZip(entries);
+    const base = sanitizeName((current.sourceName || 'project').replace(/\.(readerproj|prproj|json)$/i, ''), 'readerproj_export');
+    await saveBlob(new Blob([zip], { type: 'application/zip' }), `${base}_unpacked.zip`, '解构 ZIP 文件');
+  }
+
+  async function exportFolder() {
+    if (!current || typeof window.showDirectoryPicker !== 'function') return;
+    const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const entries = getExtractionEntries(current);
+    for (const entry of entries) {
+      const parts = entry.name.split('/').filter(Boolean);
+      let currentDir = dir;
+      for (let i = 0; i < parts.length - 1; i++) {
+        currentDir = await currentDir.getDirectoryHandle(parts[i], { create: true });
+      }
+      const fileHandle = await currentDir.getFileHandle(parts[parts.length - 1], { create: true });
+      const writable = await fileHandle.createWritable();
+      await writable.write(new Blob([entry.bytes]));
+      await writable.close();
+    }
+    alert('解构完成。');
+  }
+
+  async function exportPdfs() {
+    if (!current) return;
+    for (let i = 0; i < current.embeddedFiles.length; i++) {
+      const f = current.embeddedFiles[i];
+      const order = String(i + 1).padStart(2, '0');
+      const name = sanitizeName(f.name || `document_${order}.pdf`, `document_${order}.pdf`);
+      const finalName = name.toLowerCase().endsWith('.pdf') ? `${order}_${name}` : `${order}_${name}.pdf`;
+      const bytes = base64ToBytes(f.data);
+      downloadBlob(new Blob([bytes], { type: f.type || 'application/pdf' }), finalName);
+      await new Promise(r => setTimeout(r, 250));
+    }
+  }
+
+  function exportJsonFile(obj, name) {
+    return saveBlob(new Blob([JSON.stringify(obj, null, 2)], { type: 'application/json' }), name, 'JSON 文件');
+  }
+
+  function exportMarkdown(text, name) {
+    return saveBlob(new Blob([text], { type: 'text/markdown;charset=utf-8' }), name, 'Markdown 文件');
+  }
+
+  els.fileInput.addEventListener('change', e => readProjectFile(e.target.files[0]));
+  els.btnZip.onclick = exportZip;
+  els.btnFolder.onclick = exportFolder;
+  els.btnPdfs.onclick = exportPdfs;
+  els.btnWorkspace.onclick = () => current && exportJsonFile(current.workspace, 'workspace.json');
+  els.btnNotesJson.onclick = () => current && exportJsonFile(current.notes, 'notes.json');
+  els.btnNotesMd.onclick = () => current && exportMarkdown(buildNotesMarkdown(current), 'notes.md');
+  els.btnReset.onclick = () => {
+    current = null;
+    els.fileInput.value = '';
+    els.result.style.display = 'none';
+    els.actions.style.display = 'none';
+  };
+
+  ['dragenter', 'dragover'].forEach(name => {
+    els.drop.addEventListener(name, e => {
+      e.preventDefault();
+      els.drop.classList.add('drag');
+    });
+  });
+  ['dragleave', 'drop'].forEach(name => {
+    els.drop.addEventListener(name, e => {
+      e.preventDefault();
+      els.drop.classList.remove('drag');
+    });
+  });
+  els.drop.addEventListener('drop', e => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    readProjectFile(file);
+  });
+})();
+</script>
+</body>
+</html>
